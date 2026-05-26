@@ -119,6 +119,7 @@ async def select_persisted_leave_option(
         session.add(leave_period)
         await session.flush()
 
+        request.selected_leave_period_id = leave_period.id
         request.status = RequestStatus.SELECTED_BY_USER
         await session.flush()
 

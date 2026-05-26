@@ -49,7 +49,12 @@
 сохраняет `LeaveRequest` и возвращает DTO с `options` (без отдельного сохранения options в БД).
 
 `select_persisted_leave_option` создаёт `LeavePeriod` по выбранному `ScheduleOption`,
-связывает через `source_request_id` и переводит заявку в `selected_by_user`.
+связывает через `source_request_id`, заполняет `selected_leave_period_id` и переводит заявку в `selected_by_user`.
+
+## Approval Workflow Persistence (MVP)
+
+`submit_selected_request_for_approval`, `approve_by_commander`, `mark_ready_to_apply`, `mark_applied`
+в `approval_persistence.py` — FSM через `workflow.transition`, утверждение командира в `approval_steps`.
 
 ## Required Background Jobs
 

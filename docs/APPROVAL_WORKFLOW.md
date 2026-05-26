@@ -29,6 +29,17 @@
 3. Scheduler Engine генерирует 3-10 вариантов.
 4. Пользователь выбирает вариант.
 
+## Approval Persistence (MVP)
+
+DB-backed переходы (`approval_persistence.py`):
+
+1. `submit_selected_request_for_approval` — `selected_by_user` → `waiting_commander_approval`
+2. `approve_by_commander` — `waiting_commander_approval` → `approved_by_commander` (+ `ApprovalStep`)
+3. `mark_ready_to_apply` — `approved_by_commander` → `ready_to_apply`
+4. `mark_applied` — `ready_to_apply` → `applied` (требует `selected_leave_period_id`)
+
+Полный flow: create request → select option → submit approval → commander approve → ready_to_apply → applied.
+
 ## MVP сервисный слой (без БД)
 
 ```python

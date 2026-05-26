@@ -20,6 +20,7 @@ ALLOWED_TRANSITIONS: dict[RequestStatus, set[RequestStatus]] = {
     RequestStatus.SELECTED_BY_USER: {
         RequestStatus.WAITING_AFFECTED_PEOPLE,
         RequestStatus.WAITING_ADMIN_REVIEW,
+        RequestStatus.WAITING_COMMANDER_APPROVAL,
         RequestStatus.MANUAL_ADMIN_REVIEW_REQUIRED,
         RequestStatus.CANCELLED,
         RequestStatus.EXPIRED,
@@ -69,4 +70,3 @@ def validate_transition(current: RequestStatus, target: RequestStatus) -> None:
 def transition(current: RequestStatus, target: RequestStatus) -> RequestStatus:
     validate_transition(current, target)
     return target
-

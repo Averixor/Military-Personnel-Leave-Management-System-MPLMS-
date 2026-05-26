@@ -29,6 +29,9 @@ class LeaveRequest(Base):
     status: Mapped[RequestStatus] = mapped_column(String(80), default=RequestStatus.DRAFT, index=True)
     policy_snapshot_id: Mapped[int] = mapped_column(ForeignKey("policy_snapshots.id"))
     selected_option_id: Mapped[int | None] = mapped_column(ForeignKey("request_options.id"))
+    selected_leave_period_id: Mapped[int | None] = mapped_column(
+        ForeignKey("leave_periods.id"),
+    )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
@@ -77,4 +80,3 @@ class ApprovalStep(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
-
