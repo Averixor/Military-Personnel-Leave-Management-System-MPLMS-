@@ -48,8 +48,10 @@ def test_format_demo_flow_result() -> None:
         ),
     )
     text = format_demo_flow_result(result)
-    assert "внесено в графік відпусток" in text
+    assert "внесено в графік" in text
     assert "№1" in text
+    assert "Personnel id" not in text
+    assert "Demo-flow" not in text
 
 
 def test_missing_token_prints_clear_message(capsys: pytest.CaptureFixture[str]) -> None:

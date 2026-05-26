@@ -24,7 +24,12 @@ from mplms.models.workflow import RequestOption
 
 # Integration tests always use in-memory SQLite (ignore .env PostgreSQL).
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["BOT_AUTO_CREATE_PERSONNEL"] = "false"
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
+
+from mplms.core.config import get_settings
+
+get_settings.cache_clear()
 
 
 @pytest_asyncio.fixture

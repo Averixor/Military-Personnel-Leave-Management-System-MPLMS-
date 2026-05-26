@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from mplms.bot import handlers
+from mplms.bot.database import PERSONNEL_NOT_IN_DATABASE_MESSAGE
 from mplms.bot.database import TelegramPersonnelNotFoundError
 from mplms.bot.database import ensure_personnel_for_telegram
 from mplms.domain.enums import LeaveStatus
@@ -137,13 +138,26 @@ async def test_unknown_telegram_id_creates_personnel_when_auto_create_enabled(db
 async def test_unknown_telegram_id_rejected_when_auto_create_disabled(db_engine) -> None:
     session_factory = _session_factory(db_engine)
 
-    with pytest.raises(TelegramPersonnelNotFoundError):
+    with pytest.raises(TelegramPersonnelNotFoundError) as exc_info:
         await ensure_personnel_for_telegram(
             session_factory,
             telegram_user_id=81006,
             display_name="Unknown User",
             auto_create=False,
         )
+
+    assert str(exc_info.value) == PERSONNEL_NOT_IN_DATABASE_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_request_leave_shows_not_in_database_message(db_engine, monkeypatch) -> None:
+    session_factory = _session_factory(db_engine)
+    monkeypatch.setattr(handlers, "get_session_factory", _factory_provider(session_factory))
+    message = FakeMessage(telegram_user_id=81999, text="/request_leave")
+
+    await handlers.cmd_request_leave(message)
+
+    assert message.answers[-1][0] == PERSONNEL_NOT_IN_DATABASE_MESSAGE
 
 
 def _session_factory(db_engine):

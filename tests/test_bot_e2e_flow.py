@@ -67,6 +67,7 @@ async def test_full_bot_flow_reaches_applied_and_writes_audit(
     session_factory = _session_factory(db_engine)
     monkeypatch.setattr(handlers, "get_session_factory", _factory_provider(session_factory))
     leave_request_sessions.clear(USER_TELEGRAM_ID)
+    await _seed_role_user(session_factory, telegram_id=USER_TELEGRAM_ID, role=UserRole.PERSONNEL)
     await _seed_role_user(session_factory, telegram_id=COMMANDER_TELEGRAM_ID, role=UserRole.COMMANDER)
     await _seed_role_user(session_factory, telegram_id=ADMIN_TELEGRAM_ID, role=UserRole.ADMIN)
 
@@ -226,6 +227,7 @@ async def test_repeated_submit_is_handled_safely(db_engine, monkeypatch) -> None
     session_factory = _session_factory(db_engine)
     monkeypatch.setattr(handlers, "get_session_factory", _factory_provider(session_factory))
     leave_request_sessions.clear(USER_TELEGRAM_ID)
+    await _seed_role_user(session_factory, telegram_id=USER_TELEGRAM_ID, role=UserRole.PERSONNEL)
 
     await handlers.cmd_request_leave(
         FakeMessage(telegram_user_id=USER_TELEGRAM_ID, text="/request_leave")

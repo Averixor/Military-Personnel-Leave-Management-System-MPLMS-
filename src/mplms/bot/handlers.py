@@ -15,6 +15,7 @@ from mplms.bot.auth import require_role
 from mplms.bot.database import ensure_personnel_for_telegram
 from mplms.bot.database import get_session_factory
 from mplms.bot.database import InactivePersonnelError
+from mplms.bot.database import PERSONNEL_NOT_IN_DATABASE_MESSAGE
 from mplms.bot.database import TelegramPersonnelNotFoundError
 from mplms.bot.keyboards import admin_actions_keyboard
 from mplms.bot.keyboards import admin_menu_keyboard
@@ -29,6 +30,7 @@ from mplms.bot.keyboards import commander_pending_keyboard
 from mplms.bot.keyboards import leave_option_keyboard
 from mplms.bot.keyboards import main_menu_keyboard
 from mplms.bot.leave_request_ui import format_admin_actions_list
+from mplms.bot.leave_request_ui import format_no_options_message
 from mplms.bot.leave_request_ui import format_options_message
 from mplms.bot.leave_request_ui import format_pending_commander_list
 from mplms.bot.leave_request_ui import format_request_list_status
@@ -48,6 +50,7 @@ from mplms.bot.session import pick_option
 from mplms.bot.session import SUBMIT_APPROVAL_CALLBACK
 from mplms.cli import DemoFlowResult
 from mplms.cli import run_demo_flow
+from mplms.core.config import get_settings
 from mplms.domain.enums import LeaveStatus
 from mplms.domain.enums import RequestStatus
 from mplms.domain.enums import UserRole
@@ -79,8 +82,7 @@ _HELP_TEXT = (
     "/my_requests — ваші заявки\n"
     "/cancel_request — скасувати заявку до внесення в графік\n"
     "/commander_pending — заявки на погодження (командир)\n"
-    "/admin_actions — адмін-дії\n"
-    "/demo_flow — технічний demo-flow (CLI)"
+    "/admin_actions — адмін-дії"
 )
 
 
@@ -131,10 +133,7 @@ async def cmd_request_leave(message: Message) -> None:
         return
 
     if not created.options:
-        await message.answer(
-            f"Заявка №{created.request_id} створена, але scheduler не знайшов варіантів. "
-            f"Зверніться до адміністратора."
-        )
+        await message.answer(format_no_options_message(created.request_id))
         return
 
     leave_request_sessions.save(
@@ -546,25 +545,32 @@ async def cmd_cancel_request(message: Message) -> None:
 
 @router.message(Command("demo_flow"))
 async def cmd_demo_flow(message: Message) -> None:
-    await message.answer("Запускаю demo-flow на dev SQLite…")
+    if not _demo_flow_enabled():
+        await message.answer(_GENERIC_ACTION_ERROR)
+        return
+
+    await message.answer("Виконую перевірку…")
     try:
         result = await run_demo_flow(verbose=False)
-    except Exception as exc:
-        await message.answer(f"Demo-flow завершився з помилкою:\n{exc}")
+    except Exception:
+        await message.answer(_GENERIC_ACTION_ERROR)
         return
 
     await message.answer(format_demo_flow_result(result), reply_markup=main_menu_keyboard())
 
 
+_GENERIC_ACTION_ERROR = "Не вдалося виконати дію. Спробуйте пізніше."
+
+
+def _demo_flow_enabled() -> bool:
+    return get_settings().APP_ENV in ("local", "development")
+
+
 def format_demo_flow_result(result: DemoFlowResult) -> str:
-    lines = [
-        "Demo-flow завершено (технічний режим).",
-        f"Заявка: №{result.request_id}",
-        f"Personnel id: {result.personnel_id}",
-        f"Commander id: {result.commander_id}",
-        "Фінальний статус: внесено в графік відпусток",
-    ]
-    return "\n".join(lines)
+    return (
+        f"Перевірку завершено.\n"
+        f"Заявка №{result.request_id} — внесено в графік відпусток."
+    )
 
 
 def _request_id_arg(text: str) -> str | None:
@@ -711,10 +717,7 @@ def _friendly_personnel_error(exc: Exception) -> str:
             "Заявки та команди погодження недоступні."
         )
     if isinstance(exc, TelegramPersonnelNotFoundError):
-        return (
-            "Ваш Telegram не прив’язаний до запису Personnel. "
-            "Зверніться до адміністратора для імпорту personnel з вашим telegram_id."
-        )
+        return PERSONNEL_NOT_IN_DATABASE_MESSAGE
     return str(exc)
 
 

@@ -24,18 +24,20 @@ from mplms.models.policy import PolicySnapshot
 BOT_UNIT_NAME = "Telegram Bot Unit"
 DEMO_ADMIN_NAME = "Telegram Demo Admin"
 DEMO_COMMANDER_NAME = "Telegram Demo Commander"
+PERSONNEL_NOT_IN_DATABASE_MESSAGE = (
+    "Вас не знайдено в базі. Зверніться до адміністратора."
+)
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 class TelegramPersonnelNotFoundError(LookupError):
+    """Raised when telegram_id is absent in personnel and auto-create is disabled."""
+
     def __init__(self, telegram_user_id: int) -> None:
         self.telegram_user_id = telegram_user_id
-        super().__init__(
-            "Telegram user is not linked to Personnel. "
-            f"telegram_id={telegram_user_id}"
-        )
+        super().__init__(PERSONNEL_NOT_IN_DATABASE_MESSAGE)
 
 
 class InactivePersonnelError(PermissionError):

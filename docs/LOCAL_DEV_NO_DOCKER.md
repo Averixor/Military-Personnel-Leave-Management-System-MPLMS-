@@ -65,7 +65,6 @@ uv run python -m mplms.bot.main
 - `/start`, `/help`, `/request_leave`, `/my_request`, `/my_requests`
 - `/cancel_request [номер]` — скасувати заявку до внесення в графік
 - `/commander_approve [номер]`, `/mark_ready [номер]`, `/mark_applied [номер]`
-- `/demo_flow` — технічний demo-flow (як CLI)
 
 Bot RBAC MVP навмисно простий: роль береться з `personnel.role` за `telegram_id`.
 Нові Telegram-користувачі в dev SQLite можуть автоматично створюватися як `personnel`;
@@ -88,7 +87,7 @@ uv run python -m mplms.cli demo-flow
 uv run python -m mplms.cli demo-flow --database-url "sqlite+aiosqlite:///./data/mplms_cli_demo.sqlite3"
 ```
 
-## Импорт личного состава из CSV
+## Імпорт особового складу з CSV
 
 Формат CSV:
 
@@ -96,31 +95,31 @@ uv run python -m mplms.cli demo-flow --database-url "sqlite+aiosqlite:///./data/
 personnel_code,full_name,rank,position,role,telegram_id,is_active
 ```
 
-Поддерживаемые роли: `personnel`, `commander`, `admin`.
-`telegram_id` можно оставить пустым. `is_active` по умолчанию `true`; также принимаются
-`true/1/yes/так/да` и `false/0/no/ні/нет`.
+Приклад: `examples/personnel_sample.csv`
 
-Пример локального импорта в dev SQLite:
+- Ролі в БД: `personnel`, `commander`, `admin` (колонка `role`)
+- `telegram_id` — числовий ID користувача Telegram (можна порожнім до прив’язки)
+- Повторний імпорт з тим самим `personnel_code` **оновлює** запис (у т.ч. `telegram_id` і `role`)
+- `is_active`: `true/1/yes/так/да` або `false/0/no/ні/нет` (за замовчуванням `true`)
 
 ```powershell
 uv run python -m mplms.cli import-personnel examples/personnel_sample.csv
 uv run python -m mplms.bot.main
 ```
 
-Повторный импорт строки с тем же `personnel_code` обновляет существующую запись.
-Ошибки отдельных строк выводятся в summary и не останавливают весь импорт.
-После импорта бот сначала ищет пользователя по `telegram_id` в таблице `personnel` и берёт оттуда
-`role` и `is_active`. Так Telegram-пользователь из CSV сразу получает права `personnel`,
-`commander` или `admin`.
+Бот шукає користувача за `telegram_id` у таблиці `personnel` і бере звідти `role` та `is_active`.
+Невідомий Telegram (без запису в БД) отримує:
 
-Для dev/demo режима доступно автосоздание неизвестных Telegram-пользователей:
+```text
+Вас не знайдено в базі. Зверніться до адміністратора.
+```
+
+**За замовчуванням auto-create вимкнено** (`BOT_AUTO_CREATE_PERSONNEL=false`).
+Для локального демо без CSV можна тимчасово увімкнути:
 
 ```env
 BOT_AUTO_CREATE_PERSONNEL=true
 ```
-
-По умолчанию оно включено. Если установить `BOT_AUTO_CREATE_PERSONNEL=false`, неизвестный
-`telegram_id` будет отклонён до импорта/привязки Personnel.
 
 ## Проверка сборки
 

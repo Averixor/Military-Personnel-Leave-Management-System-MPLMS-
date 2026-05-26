@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from mplms.bot import handlers
 from mplms.bot.auth import require_role
+from mplms.bot.database import PERSONNEL_NOT_IN_DATABASE_MESSAGE
+from mplms.bot.database import TelegramPersonnelNotFoundError
 from mplms.bot.leave_request_ui import contains_forbidden_user_text
 from mplms.bot.leave_request_ui import request_status_label
 from mplms.domain.enums import LeaveStatus
@@ -136,18 +138,18 @@ async def test_admin_can_mark_ready_and_applied(db_engine, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_unknown_telegram_id_is_created_as_personnel(db_engine) -> None:
+async def test_unknown_telegram_id_is_rejected_when_not_in_database(db_engine) -> None:
     session_factory = _session_factory(db_engine)
 
-    async with session_factory() as session:
-        person = await require_role(
-            session,
-            telegram_id=404,
-            allowed_roles={UserRole.PERSONNEL.value},
-        )
+    with pytest.raises(TelegramPersonnelNotFoundError) as exc_info:
+        async with session_factory() as session:
+            await require_role(
+                session,
+                telegram_id=404,
+                allowed_roles={UserRole.PERSONNEL.value},
+            )
 
-    assert person.telegram_id == 404
-    assert person.role == UserRole.PERSONNEL
+    assert str(exc_info.value) == PERSONNEL_NOT_IN_DATABASE_MESSAGE
 
 
 def _session_factory(db_engine):

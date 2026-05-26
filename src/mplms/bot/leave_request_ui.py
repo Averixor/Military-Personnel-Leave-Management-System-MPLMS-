@@ -17,16 +17,26 @@ REQUEST_DURATION_DAYS = 15
 REQUEST_START_OFFSET_DAYS = 30
 MAX_OPTIONS_TO_SHOW = 3
 
-# Internal enum values that must never appear in user-facing Telegram text.
-FORBIDDEN_USER_TEXT_SNIPPETS: tuple[str, ...] = tuple(
+# Snippets that must not appear in texts actually sent to Telegram users.
+USER_FACING_FORBIDDEN_SNIPPETS: tuple[str, ...] = tuple(
     status.value for status in RequestStatus
 ) + (
     "Raw status",
+    "scheduler",
+    "demo-flow",
+    "demo_flow",
+    "Demo-flow",
+    "CLI",
+    "Personnel id",
+    "Commander id",
+    "traceback",
+    "ValueError",
     "request_id",
     "<request_id>",
     "/commander_approve",
     "/mark_ready",
     "/mark_applied",
+    "/demo_flow",
 )
 
 
@@ -43,6 +53,13 @@ def format_option_line(index: int, option: ScheduleOption) -> str:
     return (
         f"{index + 1}. {format_date_ua(option.start_date)} — "
         f"{format_date_ua(option.end_date)} ({option.duration_days} дн.)"
+    )
+
+
+def format_no_options_message(request_id: str) -> str:
+    return (
+        f"Заявку №{request_id} створено, але зараз немає доступних варіантів дат. "
+        "Зверніться до адміністратора або спробуйте пізніше."
     )
 
 
@@ -185,10 +202,10 @@ def _next_action_hint(status: object) -> str:
 
 
 def contains_forbidden_user_text(text: str) -> list[str]:
-    """Return forbidden snippets found in text (for tests)."""
+    """Return forbidden snippets found in user-facing Telegram message text."""
     lowered = text.lower()
     found: list[str] = []
-    for snippet in FORBIDDEN_USER_TEXT_SNIPPETS:
+    for snippet in USER_FACING_FORBIDDEN_SNIPPETS:
         if snippet.lower() in lowered:
             found.append(snippet)
     return found
