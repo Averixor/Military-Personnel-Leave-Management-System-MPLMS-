@@ -43,7 +43,11 @@ uv run python -m mplms.bot.main
 Если `TELEGRAM_BOT_TOKEN` не задан, процесс завершится с сообщением:
 `TELEGRAM_BOT_TOKEN is not configured.` (без падения с непонятной ошибкой).
 
-Команды бота: `/start`, `/help`, `/demo_flow` (тот же flow, что CLI `demo-flow`).
+Команды бота:
+
+- `/start`, `/help`
+- `/request_leave` — создать заявку, показать 3 варианта scheduler, выбрать inline-кнопкой
+- `/demo_flow` — полный backend flow (как CLI `demo-flow`)
 
 ## Ручной прогон полного flow (CLI)
 
