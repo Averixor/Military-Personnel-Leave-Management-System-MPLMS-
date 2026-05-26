@@ -78,6 +78,27 @@ uv run python -m mplms.cli demo-flow
 uv run python -m mplms.cli demo-flow --database-url "sqlite+aiosqlite:///./data/mplms_cli_demo.sqlite3"
 ```
 
+## Импорт личного состава из CSV
+
+Формат CSV:
+
+```text
+personnel_code,full_name,rank,position,role,telegram_id,is_active
+```
+
+Поддерживаемые роли: `personnel`, `commander`, `admin`.
+`telegram_id` можно оставить пустым. `is_active` по умолчанию `true`; также принимаются
+`true/1/yes/так/да` и `false/0/no/ні/нет`.
+
+Пример локального импорта в dev SQLite:
+
+```powershell
+uv run python -m mplms.cli import-personnel examples/personnel_sample.csv
+```
+
+Повторный импорт строки с тем же `personnel_code` обновляет существующую запись.
+Ошибки отдельных строк выводятся в summary и не останавливают весь импорт.
+
 ## Проверка сборки
 
 ```powershell

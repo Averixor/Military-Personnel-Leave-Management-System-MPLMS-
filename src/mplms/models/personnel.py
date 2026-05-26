@@ -18,9 +18,11 @@ class Personnel(Base):
     __tablename__ = "personnel"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    personnel_code: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True)
     full_name: Mapped[str] = mapped_column(String(255), index=True)
     rank: Mapped[str | None] = mapped_column(String(100))
+    position: Mapped[str | None] = mapped_column(String(255))
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id"), index=True)
     role: Mapped[UserRole] = mapped_column(String(50), default=UserRole.PERSONNEL)
     commander_id: Mapped[int | None] = mapped_column(ForeignKey("personnel.id"))
@@ -49,4 +51,3 @@ class Unit(Base):
     normal_overlap_limit: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
-

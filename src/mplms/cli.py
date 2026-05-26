@@ -7,7 +7,9 @@ import asyncio
 import sys
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +35,8 @@ from mplms.services.approval_persistence import submit_selected_request_for_appr
 from mplms.services.audit import status_str
 from mplms.services.leave_request_persistence import create_persisted_leave_request
 from mplms.services.leave_request_persistence import select_persisted_leave_option
+from mplms.services.personnel_import import ImportResult
+from mplms.services.personnel_import import import_personnel_csv
 
 DEMO_UNIT_NAME = "CLI Demo Unit"
 DEMO_APPLICANT_NAME = "CLI Demo Applicant"
@@ -68,14 +72,55 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Override DATABASE_URL (default: dev SQLite file).",
     )
+    import_parser = subparsers.add_parser(
+        "import-personnel",
+        help="Import personnel from CSV into the configured database.",
+    )
+    import_parser.add_argument("csv_path", type=Path)
+    import_parser.add_argument(
+        "--database-url",
+        default=None,
+        help="Override DATABASE_URL (default: dev SQLite file).",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "demo-flow":
         asyncio.run(run_demo_flow(database_url=args.database_url, verbose=True))
         return 0
+    if args.command == "import-personnel":
+        result = asyncio.run(
+            run_import_personnel(
+                csv_path=args.csv_path,
+                database_url=args.database_url,
+                verbose=True,
+            )
+        )
+        return 1 if result.errors and result.created_count == 0 and result.updated_count == 0 else 0
 
     parser.print_help()
     return 1
+
+
+async def run_import_personnel(
+    *,
+    csv_path: Path,
+    database_url: str | None = None,
+    verbose: bool = True,
+) -> ImportResult:
+    url = resolve_database_url(database_url)
+    ensure_sqlite_data_dir(url)
+
+    engine = create_async_engine(url, **engine_kwargs(url))
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, autobegin=False)
+    try:
+        await _init_schema(engine)
+        await _ensure_personnel_import_schema(engine)
+        async with session_factory() as session:
+            result = await import_personnel_csv(session, csv_path)
+        _print_import_result(result, csv_path=csv_path, url=url, verbose=verbose)
+        return result
+    finally:
+        await engine.dispose()
 
 
 async def run_demo_flow(
@@ -144,6 +189,29 @@ async def run_demo_flow(
 async def _init_schema(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+
+
+async def _ensure_personnel_import_schema(engine: AsyncEngine) -> None:
+    async with engine.begin() as connection:
+        columns = await connection.run_sync(
+            lambda sync_conn: {
+                column["name"] for column in sa.inspect(sync_conn).get_columns("personnel")
+            }
+        )
+        if "personnel_code" not in columns:
+            await connection.execute(
+                sa.text("ALTER TABLE personnel ADD COLUMN personnel_code VARCHAR(100)")
+            )
+        if "position" not in columns:
+            await connection.execute(
+                sa.text("ALTER TABLE personnel ADD COLUMN position VARCHAR(255)")
+            )
+        await connection.execute(
+            sa.text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_personnel_personnel_code "
+                "ON personnel (personnel_code)"
+            )
+        )
 
 
 async def _ensure_demo_personnel(
@@ -256,6 +324,27 @@ def _print_summary(result: DemoFlowResult, *, url: str, verbose: bool) -> None:
             f"{event.before_state or {}} -> {event.after_state or {}}"
         )
     print("\nDemo flow completed successfully.")
+
+
+def _print_import_result(
+    result: ImportResult,
+    *,
+    csv_path: Path,
+    url: str,
+    verbose: bool,
+) -> None:
+    if not verbose:
+        return
+    print(f"\nDatabase: {url}")
+    print(f"CSV: {csv_path}")
+    print(f"Created: {result.created_count}")
+    print(f"Updated: {result.updated_count}")
+    print(f"Skipped: {result.skipped_count}")
+    if result.errors:
+        print("\nErrors:")
+        for error in result.errors:
+            print(f"  - {error}")
+    print("\nPersonnel import completed.")
 
 
 if __name__ == "__main__":

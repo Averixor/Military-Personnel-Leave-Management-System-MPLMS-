@@ -1,0 +1,4 @@
+personnel_code,full_name,rank,position,role,telegram_id,is_active
+PERS-001,Ivan Petrenko,LT,Platoon Commander,commander,700001,true
+PERS-002,Olena Shevchenko,SGT,Personnel Clerk,admin,700002,yes
+PERS-003,Andrii Kovalenko,PVT,Rifleman,personnel,,так
