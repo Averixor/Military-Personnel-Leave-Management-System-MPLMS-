@@ -5,6 +5,7 @@ from functools import lru_cache
 from logging.config import dictConfig
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +30,13 @@ class AppSettings(BaseSettings):
     DATABASE_URL: str = ""
 
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def normalize_debug_flag(cls, value: object) -> object:
+        if isinstance(value, str) and value.lower() == "release":
+            return False
+        return value
 
     @property
     def database_url(self) -> str:

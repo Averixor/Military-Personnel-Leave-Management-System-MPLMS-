@@ -7,6 +7,7 @@ from aiogram.types import ReplyKeyboardMarkup
 
 from mplms.bot.leave_request_ui import MAX_OPTIONS_TO_SHOW
 from mplms.bot.session import LEAVE_PICK_PREFIX
+from mplms.bot.session import SUBMIT_APPROVAL_CALLBACK
 
 BTN_DEMO_REQUEST = "Создать демо-заявку"
 BTN_HELP = "Помощь"
@@ -34,3 +35,16 @@ def leave_option_keyboard(option_count: int) -> InlineKeyboardMarkup:
         for index in range(count)
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def approval_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Подати на погодження",
+                    callback_data=SUBMIT_APPROVAL_CALLBACK,
+                )
+            ]
+        ]
+    )

@@ -29,9 +29,10 @@ uv run python -m mplms.main
 uv run pytest -ra
 ```
 
-## Telegram Bot (MVP skeleton)
+## Telegram Bot (MVP)
 
 Тонкий UI-слой поверх backend. Бизнес-логика — в сервисах и `mplms.cli.run_demo_flow`.
+DEV-режим использует SQLite по умолчанию; Docker/PostgreSQL для локального MVP не нужны.
 
 ```powershell
 # В .env задайте токен от @BotFather:
@@ -46,8 +47,15 @@ uv run python -m mplms.bot.main
 Команды бота:
 
 - `/start`, `/help`
-- `/request_leave` — создать заявку, показать 3 варианта scheduler, выбрать inline-кнопкой
+- `/request_leave` — создать заявку, показать 3 варианта scheduler, выбрать inline-кнопкой, затем подать на погодження
+- `/my_request` — показать последний `request_id` из bot session, текущий статус и выбранные даты
+- `/commander_approve <request_id>` — MVP-согласование командиром через demo commander
+- `/mark_ready <request_id>` — перевести согласованную заявку в `ready_to_apply`
+- `/mark_applied <request_id>` — перевести готовую заявку в `applied`
 - `/demo_flow` — полный backend flow (как CLI `demo-flow`)
+
+Approval MVP intentionally keeps RBAC soft: команда `/commander_approve` использует demo commander
+и создаёт его автоматически, если он ещё не существует.
 
 ## Ручной прогон полного flow (CLI)
 

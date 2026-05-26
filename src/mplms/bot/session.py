@@ -8,6 +8,7 @@ from mplms.services.scheduler import ScheduleOption
 
 MAX_PICKABLE_OPTIONS = 3
 LEAVE_PICK_PREFIX = "leave_pick:"
+SUBMIT_APPROVAL_CALLBACK = "leave_submit_approval"
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,19 @@ class LeaveRequestSessionStore:
 
     def clear(self, telegram_user_id: int) -> None:
         self._sessions.pop(telegram_user_id, None)
+
+    def update_request_id(self, telegram_user_id: int, request_id: str) -> None:
+        session = self._sessions.get(telegram_user_id)
+        if session is None:
+            self._sessions[telegram_user_id] = LeaveRequestSession(
+                request_id=request_id,
+                options=(),
+            )
+            return
+        self._sessions[telegram_user_id] = LeaveRequestSession(
+            request_id=request_id,
+            options=session.options,
+        )
 
 
 def parse_leave_pick_index(callback_data: str) -> int | None:
