@@ -65,7 +65,10 @@ Copy-Item .env.example .env   # DATABASE_URL можно не задавать
 uv run alembic upgrade head
 uv run python -m mplms.main
 uv run pytest -ra
+uv run python -m mplms.cli demo-flow
 ```
+
+Команда `demo-flow` прогоняет полный leave-request flow на SQLite и выводит audit trail (см. [LOCAL_DEV_NO_DOCKER.md](docs/LOCAL_DEV_NO_DOCKER.md)).
 
 ## PostgreSQL (optional, Docker)
 

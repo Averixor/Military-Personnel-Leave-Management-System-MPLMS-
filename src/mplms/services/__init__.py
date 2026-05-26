@@ -1,3 +1,4 @@
+from mplms.services.audit import create_audit_log
 from mplms.services.approval_persistence import approve_by_commander
 from mplms.services.approval_persistence import mark_applied
 from mplms.services.approval_persistence import mark_ready_to_apply
@@ -35,6 +36,7 @@ __all__ = [
     "LeaveRequestDraft",
     "PersistedLeaveRequest",
     "ScheduleOption",
+    "create_audit_log",
     "create_leave_request_draft",
     "create_persisted_leave_request",
     "mark_applied",

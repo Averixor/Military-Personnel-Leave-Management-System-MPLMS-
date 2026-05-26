@@ -29,6 +29,24 @@ uv run python -m mplms.main
 uv run pytest -ra
 ```
 
+## Ручной прогон полного flow (CLI)
+
+Без Docker, PostgreSQL и Telegram — на dev SQLite:
+
+```powershell
+uv run python -m mplms.cli demo-flow
+```
+
+Команда создаёт `./data/mplms_dev.sqlite3` (если нет), поднимает таблицы, сидирует demo-персонал,
+прогоняет: create request → select option → submit → commander approve → ready_to_apply → applied,
+и печатает финальный статус и audit trail.
+
+Для отдельного файла БД:
+
+```powershell
+uv run python -m mplms.cli demo-flow --database-url "sqlite+aiosqlite:///./data/mplms_cli_demo.sqlite3"
+```
+
 ## Проверка сборки
 
 ```powershell
@@ -37,7 +55,7 @@ uv run python -m compileall src tests migrations
 uv run pytest -ra
 ```
 
-Ожидается **17 passed** (интеграционные тесты `test_apply.py` работают на SQLite in-memory).
+Ожидается зелёный прогон всего набора `tests/` (SQLite in-memory).
 
 ## Миграции Alembic
 

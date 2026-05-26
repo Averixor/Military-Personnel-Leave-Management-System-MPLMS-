@@ -103,6 +103,7 @@ async def test_select_option_creates_leave_period_and_updates_status(db_session)
         request = await db_session.get(LeaveRequest, int(created.request_id))
         assert request is not None
         assert request.status == RequestStatus.SELECTED_BY_USER
+        assert request.selected_leave_period_id is not None
 
         leaves = (
             await db_session.execute(
