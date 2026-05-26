@@ -1,0 +1,22 @@
+# Optional PostgreSQL for production-like local runs (not required for dev).
+# Default dev uses SQLite — see docs/LOCAL_DEV_NO_DOCKER.md
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mplms
+      POSTGRES_USER: mplms
+      POSTGRES_PASSWORD: mplms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mplms -d mplms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

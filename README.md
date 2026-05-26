@@ -41,6 +41,7 @@ Telegram в этой системе является только пользов
 - [Scheduler Engine](docs/SCHEDULER_ENGINE.md)
 - [Workflow заявок](docs/APPROVAL_WORKFLOW.md)
 - [Roadmap реализации](docs/ROADMAP.md)
+- [Разработка без Docker](docs/LOCAL_DEV_NO_DOCKER.md)
 
 ## Технологический стек
 
@@ -52,29 +53,32 @@ Telegram в этой системе является только пользов
 - APScheduler для MVP background jobs
 - Docker / Docker Compose
 
-SQLite и Google Sheets не используются как основное хранилище.
+**Production** использует PostgreSQL. **Локальная разработка** по умолчанию — SQLite (без Docker и без установки PostgreSQL). Google Sheets не используется.
 
-## Локальный запуск
+## Локальный запуск (без Docker)
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env
-docker compose up -d postgres
-python -m mplms.main
-```
-
-Для Windows PowerShell:
+См. [docs/LOCAL_DEV_NO_DOCKER.md](docs/LOCAL_DEV_NO_DOCKER.md).
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-Copy-Item .env.example .env
-docker compose up -d postgres
-python -m mplms.main
+uv sync --extra dev
+Copy-Item .env.example .env   # DATABASE_URL можно не задавать
+uv run alembic upgrade head
+uv run python -m mplms.main
+uv run pytest -ra
 ```
+
+## PostgreSQL (optional, Docker)
+
+```powershell
+cd infra/docker
+docker compose up -d postgres
+cd ../..
+$env:DATABASE_URL = "postgresql+asyncpg://mplms:mplms@localhost:5432/mplms"
+uv run alembic upgrade head
+uv run python -m mplms.main
+```
+
+См. [infra/docker/README.md](infra/docker/README.md).
 
 ## Текущий статус реализации
 

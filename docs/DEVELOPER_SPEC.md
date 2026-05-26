@@ -13,7 +13,7 @@
 
 ## Must Have
 
-- PostgreSQL как основное хранилище.
+- PostgreSQL как production-хранилище; SQLite (`aiosqlite`) для локальной разработки по умолчанию.
 - SQLAlchemy 2 + Alembic.
 - Telegram bot как тонкий UI-слой.
 - Scheduler Engine без зависимости от Telegram.
@@ -28,7 +28,7 @@
 ## Must Not Have
 
 - Бизнес-логика в Telegram handlers.
-- SQLite как production database.
+- SQLite как production database (только dev/test default).
 - Google Sheets как production database.
 - Автоматическое применение заявки после approval.
 - Прямой обход FSM.
@@ -51,4 +51,3 @@
 - nightly_replan;
 - generate_future_leaves;
 - snapshot_schedule.
-

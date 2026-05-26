@@ -5,6 +5,7 @@ description = "Military Personnel Leave Management System"
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.7,<4.0",
+    "aiosqlite>=0.20,<1.0",
     "alembic>=1.13,<2.0",
     "apscheduler>=3.10,<4.0",
     "asyncpg>=0.29,<1.0",
@@ -35,4 +36,3 @@ target-version = "py312"
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
-
