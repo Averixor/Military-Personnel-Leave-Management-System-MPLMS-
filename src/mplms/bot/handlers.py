@@ -23,7 +23,9 @@ from mplms.bot.leave_request_ui import LEAVE_TYPE_ANNUAL
 from mplms.bot.leave_request_ui import REQUEST_DURATION_DAYS
 from mplms.bot.leave_request_ui import default_desired_start
 from mplms.bot.leave_request_ui import format_options_message
-from mplms.bot.leave_request_ui import format_selection_confirmation
+from mplms.bot.leave_request_ui import format_request_list_status
+from mplms.bot.leave_request_ui import format_request_status
+from mplms.bot.leave_request_ui import request_status_label
 from mplms.bot.session import LeaveRequestSession
 from mplms.bot.session import SUBMIT_APPROVAL_CALLBACK
 from mplms.bot.session import leave_request_sessions
@@ -140,11 +142,12 @@ async def on_leave_option_picked(callback: CallbackQuery) -> None:
     try:
         session_factory = await get_session_factory()
         async with session_factory() as db_session:
-            await select_persisted_leave_option(
+            updated = await select_persisted_leave_option(
                 db_session,
                 request_id=session.request_id,
                 option=option,
             )
+            selected_leave_period = await _load_selected_leave_period(db_session, updated)
     except ValueError as exc:
         await callback.message.answer(_friendly_pick_error(session.request_id, exc))
         return
@@ -154,7 +157,7 @@ async def on_leave_option_picked(callback: CallbackQuery) -> None:
 
     leave_request_sessions.update_request_id(callback.from_user.id, session.request_id)
     await callback.message.answer(
-        f"Заявка #{session.request_id}\n{format_selection_confirmation(option)}",
+        format_request_status(updated, selected_leave_period),
         reply_markup=approval_keyboard(),
     )
 
@@ -179,6 +182,7 @@ async def on_submit_approval(callback: CallbackQuery) -> None:
                 db_session,
                 request_id=session.request_id,
             )
+            selected_leave_period = await _load_selected_leave_period(db_session, updated)
     except ValueError as exc:
         await callback.message.answer(
             await _friendly_submit_error(session.request_id, exc)
@@ -189,8 +193,7 @@ async def on_submit_approval(callback: CallbackQuery) -> None:
         return
 
     await callback.message.answer(
-        f"Заявка #{updated.id} отправлена на погодження.\n"
-        f"Статус: {_status_label(updated.status)}",
+        format_request_status(updated, selected_leave_period),
         reply_markup=main_menu_keyboard(),
     )
 
@@ -220,6 +223,7 @@ async def cmd_commander_approve(message: Message) -> None:
                 request_id=request_id,
                 commander_id=str(commander.id),
             )
+            selected_leave_period = await _load_selected_leave_period(session, updated)
     except RoleRequiredError as exc:
         await message.answer(str(exc))
         return
@@ -230,10 +234,7 @@ async def cmd_commander_approve(message: Message) -> None:
         await message.answer(f"Не удалось согласовать заявку:\n{exc}")
         return
 
-    await message.answer(
-        f"Заявка #{updated.id} согласована командиром.\n"
-        f"Статус: {_status_label(updated.status)}"
-    )
+    await message.answer(format_request_status(updated, selected_leave_period))
 
 
 @router.message(Command("mark_ready"))
@@ -257,6 +258,7 @@ async def cmd_mark_ready(message: Message) -> None:
             )
         async with session_factory() as session:
             updated = await mark_ready_to_apply(session, request_id=request_id)
+            selected_leave_period = await _load_selected_leave_period(session, updated)
     except RoleRequiredError as exc:
         await message.answer(str(exc))
         return
@@ -267,7 +269,7 @@ async def cmd_mark_ready(message: Message) -> None:
         await message.answer(f"Не удалось отметить заявку готовой:\n{exc}")
         return
 
-    await message.answer(f"Заявка #{updated.id}\nСтатус: {_status_label(updated.status)}")
+    await message.answer(format_request_status(updated, selected_leave_period))
 
 
 @router.message(Command("mark_applied"))
@@ -291,6 +293,7 @@ async def cmd_mark_applied(message: Message) -> None:
             )
         async with session_factory() as session:
             updated = await mark_applied(session, request_id=request_id)
+            selected_leave_period = await _load_selected_leave_period(session, updated)
     except RoleRequiredError as exc:
         await message.answer(str(exc))
         return
@@ -301,7 +304,7 @@ async def cmd_mark_applied(message: Message) -> None:
         await message.answer(f"Не удалось применить заявку:\n{exc}")
         return
 
-    await message.answer(f"Заявка #{updated.id}\nСтатус: {_status_label(updated.status)}")
+    await message.answer(format_request_status(updated, selected_leave_period))
 
 
 @router.message(Command("my_request"))
@@ -335,7 +338,7 @@ async def cmd_my_request(message: Message) -> None:
         await message.answer(f"Не удалось получить заявку:\n{exc}")
         return
 
-    await message.answer(_format_my_request(request, leave_period))
+    await message.answer(format_request_status(request, leave_period))
 
 
 @router.message(Command("my_requests"))
@@ -367,7 +370,7 @@ async def cmd_my_requests(message: Message) -> None:
         await message.answer("У вас пока нет заявок. Создайте первую через /request_leave.")
         return
 
-    await message.answer(_format_request_list(requests))
+    await message.answer(format_request_list_status(requests))
 
 
 @router.message(Command("cancel_request"))
@@ -403,16 +406,20 @@ async def cmd_cancel_request(message: Message) -> None:
                 await message.answer(f"Заявка #{request_id} не найдена среди ваших заявок.")
                 return
             if request.status == RequestStatus.APPLIED:
-                await message.answer("Заявка уже applied. Отменить её через MVP-бот нельзя.")
+                await message.answer(
+                    "Заявка уже applied. Отменить её через MVP-бот нельзя.\n"
+                    f"{format_request_status(request, await _load_selected_leave_period(db_session, request))}"
+                )
                 return
             if request.status == RequestStatus.CANCELLED:
                 await message.answer(
-                    f"Заявка #{request_id} уже отменена.\n"
-                    f"Статус: {_status_label(request.status)}"
+                    "Заявка уже отменена.\n"
+                    f"{format_request_status(request, await _load_selected_leave_period(db_session, request))}"
                 )
                 return
 
             request.status = RequestStatus.CANCELLED
+            selected_leave_period = None
             if request.selected_leave_period_id is not None:
                 leave_period = await db_session.get(
                     LeavePeriod,
@@ -420,14 +427,14 @@ async def cmd_cancel_request(message: Message) -> None:
                 )
                 if leave_period is not None:
                     leave_period.status = LeaveStatus.CANCELLED
+                    selected_leave_period = leave_period
             await db_session.flush()
     except Exception as exc:
         await message.answer(f"Не удалось отменить заявку:\n{exc}")
         return
 
     await message.answer(
-        f"Заявка #{request_id} отменена.\n"
-        f"Статус: {_status_label(RequestStatus.CANCELLED)}"
+        format_request_status(request, selected_leave_period)
     )
 
 
@@ -468,27 +475,16 @@ def _request_id_arg(text: str) -> str | None:
     return parts[1].strip()
 
 
-def _format_my_request(
+async def _load_selected_leave_period(
+    session,
     request: LeaveRequest,
-    leave_period: LeavePeriod | None,
-) -> str:
-    lines = [
-        f"Заявка #{request.id}",
-        f"Статус: {_status_label(request.status)}",
-    ]
-    if leave_period is not None:
-        lines.append(f"Даты: {leave_period.starts_on} — {leave_period.ends_on}")
-    return "\n".join(lines)
-
-
-def _format_request_list(requests: tuple[LeaveRequest, ...]) -> str:
-    lines = ["Ваши последние заявки:"]
-    for request in requests:
-        lines.append(
-            f"#{request.id}: {_status_label(request.status)}, "
-            f"желательно с {request.desired_start_date}, {request.desired_days_count} дн."
-        )
-    return "\n".join(lines)
+) -> LeavePeriod | None:
+    if request.selected_leave_period_id is None:
+        return None
+    if session.in_transaction():
+        return await session.get(LeavePeriod, request.selected_leave_period_id)
+    async with session.begin():
+        return await session.get(LeavePeriod, request.selected_leave_period_id)
 
 
 def _friendly_workflow_error(request_id: str, exc: ValueError) -> str:
@@ -525,7 +521,7 @@ async def _friendly_submit_error(request_id: str, exc: ValueError) -> str:
         return f"Заявка #{request_id} не найдена."
     return (
         f"Заявка #{request_id} уже не ожидает отправки на погодження.\n"
-        f"Текущий статус: {_status_label(status)}"
+            f"Текущий статус: {request_status_label(status)}"
     )
 
 
@@ -540,27 +536,3 @@ async def _load_request_status(request_id: str) -> RequestStatus | None:
         if request is None:
             return None
         return request.status
-
-
-def _status_value(status: object) -> str:
-    return str(getattr(status, "value", status))
-
-
-def _status_label(status: object) -> str:
-    value = _status_value(status)
-    labels = {
-        RequestStatus.DRAFT.value: "черновик",
-        RequestStatus.OPTIONS_GENERATED.value: "варианты подобраны",
-        RequestStatus.SELECTED_BY_USER.value: "вариант выбран",
-        RequestStatus.WAITING_AFFECTED_PEOPLE.value: "ожидает согласия затронутых людей",
-        RequestStatus.WAITING_ADMIN_REVIEW.value: "ожидает проверки администратора",
-        RequestStatus.WAITING_COMMANDER_APPROVAL.value: "ожидает согласования командира",
-        RequestStatus.APPROVED_BY_COMMANDER.value: "согласована командиром",
-        RequestStatus.READY_TO_APPLY.value: "готова к применению",
-        RequestStatus.APPLIED.value: "применена",
-        RequestStatus.REJECTED.value: "отклонена",
-        RequestStatus.EXPIRED.value: "истекла",
-        RequestStatus.CANCELLED.value: "отменена",
-        RequestStatus.MANUAL_ADMIN_REVIEW_REQUIRED.value: "нужна ручная проверка администратора",
-    }
-    return f"{value} — {labels.get(value, 'неизвестный статус')}"

@@ -87,7 +87,7 @@ async def test_my_request_shows_status(db_engine, monkeypatch) -> None:
 
     text = message.answers[-1][0]
     assert f"Заявка #{request_id}" in text
-    assert "Статус: selected_by_user" in text
+    assert "Raw status: selected_by_user" in text
     assert "Даты: 2026-08-01" in text
 
 
