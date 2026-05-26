@@ -29,6 +29,22 @@ uv run python -m mplms.main
 uv run pytest -ra
 ```
 
+## Telegram Bot (MVP skeleton)
+
+Тонкий UI-слой поверх backend. Бизнес-логика — в сервисах и `mplms.cli.run_demo_flow`.
+
+```powershell
+# В .env задайте токен от @BotFather:
+# TELEGRAM_BOT_TOKEN=123456:ABC...
+
+uv run python -m mplms.bot.main
+```
+
+Если `TELEGRAM_BOT_TOKEN` не задан, процесс завершится с сообщением:
+`TELEGRAM_BOT_TOKEN is not configured.` (без падения с непонятной ошибкой).
+
+Команды бота: `/start`, `/help`, `/demo_flow` (тот же flow, что CLI `demo-flow`).
+
 ## Ручной прогон полного flow (CLI)
 
 Без Docker, PostgreSQL и Telegram — на dev SQLite:

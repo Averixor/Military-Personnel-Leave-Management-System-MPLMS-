@@ -70,6 +70,11 @@ uv run python -m mplms.cli demo-flow
 
 Команда `demo-flow` прогоняет полный leave-request flow на SQLite и выводит audit trail (см. [LOCAL_DEV_NO_DOCKER.md](docs/LOCAL_DEV_NO_DOCKER.md)).
 
+```powershell
+# Telegram bot (нужен TELEGRAM_BOT_TOKEN в .env)
+uv run python -m mplms.bot.main
+```
+
 ## PostgreSQL (optional, Docker)
 
 ```powershell
