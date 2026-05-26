@@ -28,13 +28,27 @@
 2. Указывает дату, место, дни дороги и документы.
 3. Scheduler Engine генерирует 3-10 вариантов.
 4. Пользователь выбирает вариант.
-5. Если затрагиваются другие люди, система запрашивает их согласие.
-6. После согласий заявка идет администратору.
-7. Администратор проверяет и отправляет командиру.
-8. Командир утверждает или отклоняет.
-9. При отсутствии командира используется заместитель.
-10. После утверждения заявка становится ready_to_apply.
-11. Администратор применяет изменения.
+
+## MVP сервисный слой (без БД)
+
+```python
+from mplms.services.leave_request import create_leave_request_draft, select_leave_option
+
+draft = create_leave_request_draft(
+    personnel_id="42",
+    desired_start=date(2026, 6, 15),
+    duration_days=15,
+    leave_type="annual_main",
+    existing_periods=[],
+)
+# draft.status == "options_generated"
+
+draft = select_leave_option(draft, option_index=0)
+# draft.status == "selected_by_user"
+```
+
+Если Scheduler не нашёл допустимых вариантов, `create_leave_request_draft` возвращает
+`status="manual_review_required"` и пустой список `options`. 5. Если затрагиваются другие люди, система запрашивает их согласие. 6. После согласий заявка идет администратору. 7. Администратор проверяет и отправляет командиру. 8. Командир утверждает или отклоняет. 9. При отсутствии командира используется заместитель. 10. После утверждения заявка становится ready_to_apply. 11. Администратор применяет изменения.
 
 ## Невалидные переходы
 
@@ -93,4 +107,3 @@ Admin может:
 - restore snapshots.
 
 Любой override обязан иметь reason и audit event.
-
