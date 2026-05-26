@@ -18,6 +18,8 @@ from mplms.models.workflow import LeaveRequest
 from mplms.services.leave_request import STATUS_MANUAL_REVIEW_REQUIRED
 from mplms.services.leave_request import STATUS_OPTIONS_GENERATED
 from mplms.services.leave_request import STATUS_SELECTED_BY_USER
+from mplms.services.audit import create_audit_log
+from mplms.services.audit import status_str
 from mplms.services.leave_request import create_leave_request_draft
 from mplms.services.scheduler import ExistingLeavePeriod
 from mplms.services.scheduler import ScheduleOption
@@ -75,6 +77,16 @@ async def create_persisted_leave_request(
         session.add(request)
         await session.flush()
 
+        await create_audit_log(
+            session,
+            entity_type="leave_request",
+            entity_id=str(request.id),
+            operation="leave_request_created",
+            changed_by=personnel_id,
+            new_values={"status": status_str(request.status)},
+            reason="Leave request created with scheduler options",
+        )
+
         return PersistedLeaveRequest(
             request_id=str(request.id),
             personnel_id=personnel_id,
@@ -101,6 +113,7 @@ async def select_persisted_leave_option(
                 f"got {request.status}"
             )
 
+        old_status = status_str(request.status)
         leave_type = await _resolve_leave_type_for_request(session, request)
         leave_period = LeavePeriod(
             person_id=request.person_id,
@@ -122,6 +135,17 @@ async def select_persisted_leave_option(
         request.selected_leave_period_id = leave_period.id
         request.status = RequestStatus.SELECTED_BY_USER
         await session.flush()
+
+        await create_audit_log(
+            session,
+            entity_type="leave_request",
+            entity_id=str(request.id),
+            operation="leave_option_selected",
+            changed_by=str(request.person_id),
+            old_values={"status": old_status},
+            new_values={"status": status_str(request.status)},
+            reason="User selected a scheduler option",
+        )
 
         return request
 

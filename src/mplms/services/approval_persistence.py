@@ -13,6 +13,8 @@ from mplms.domain.enums import UserRole
 from mplms.models.leave import LeavePeriod
 from mplms.models.workflow import ApprovalStep
 from mplms.models.workflow import LeaveRequest
+from mplms.services.audit import create_audit_log
+from mplms.services.audit import status_str
 from mplms.services.workflow import transition
 
 
@@ -30,11 +32,23 @@ async def submit_selected_request_for_approval(
                 f"got {request.status}"
             )
 
+        old_status = status_str(request.status)
         request.status = transition(
             RequestStatus.SELECTED_BY_USER,
             RequestStatus.WAITING_COMMANDER_APPROVAL,
         )
         await session.flush()
+
+        await create_audit_log(
+            session,
+            entity_type="leave_request",
+            entity_id=str(request.id),
+            operation="submitted_for_approval",
+            changed_by=str(request.person_id),
+            old_values={"status": old_status},
+            new_values={"status": status_str(request.status)},
+            reason="Leave request submitted for commander approval",
+        )
         return request
 
 
@@ -54,6 +68,7 @@ async def approve_by_commander(
                 f"got {request.status}"
             )
 
+        old_status = status_str(request.status)
         request.status = transition(
             RequestStatus.WAITING_COMMANDER_APPROVAL,
             RequestStatus.APPROVED_BY_COMMANDER,
@@ -68,6 +83,17 @@ async def approve_by_commander(
             )
         )
         await session.flush()
+
+        await create_audit_log(
+            session,
+            entity_type="leave_request",
+            entity_id=str(request.id),
+            operation="commander_approved",
+            changed_by=commander_id,
+            old_values={"status": old_status},
+            new_values={"status": status_str(request.status)},
+            reason="Commander approved leave request",
+        )
         return request
 
 
@@ -85,11 +111,22 @@ async def mark_ready_to_apply(
                 f"got {request.status}"
             )
 
+        old_status = status_str(request.status)
         request.status = transition(
             RequestStatus.APPROVED_BY_COMMANDER,
             RequestStatus.READY_TO_APPLY,
         )
         await session.flush()
+
+        await create_audit_log(
+            session,
+            entity_type="leave_request",
+            entity_id=str(request.id),
+            operation="ready_to_apply",
+            old_values={"status": old_status},
+            new_values={"status": status_str(request.status)},
+            reason="Leave request marked ready to apply",
+        )
         return request
 
 
@@ -118,11 +155,22 @@ async def mark_applied(
                 f"Selected leave period {request.selected_leave_period_id} was not found"
             )
 
+        old_status = status_str(request.status)
         request.status = transition(
             RequestStatus.READY_TO_APPLY,
             RequestStatus.APPLIED,
         )
         await session.flush()
+
+        await create_audit_log(
+            session,
+            entity_type="leave_request",
+            entity_id=str(request.id),
+            operation="applied",
+            old_values={"status": old_status},
+            new_values={"status": status_str(request.status)},
+            reason="Leave request marked as applied",
+        )
         return request
 
 

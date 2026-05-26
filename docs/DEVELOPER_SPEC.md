@@ -56,6 +56,12 @@
 `submit_selected_request_for_approval`, `approve_by_commander`, `mark_ready_to_apply`, `mark_applied`
 в `approval_persistence.py` — FSM через `workflow.transition`, утверждение командира в `approval_steps`.
 
+## Audit (MVP)
+
+`create_audit_log` в `audit.py` пишет в `audit_logs` (`action`, `before_state`, `after_state`, `actor_id`).
+Persistence-слои логируют: `leave_request_created`, `leave_option_selected`, `submitted_for_approval`,
+`commander_approved`, `ready_to_apply`, `applied`.
+
 ## Required Background Jobs
 
 - freeze_leaves_20_days;
