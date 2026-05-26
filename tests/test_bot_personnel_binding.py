@@ -72,7 +72,8 @@ async def test_imported_commander_can_approve(db_engine, monkeypatch) -> None:
 
     await handlers.cmd_commander_approve(message)
 
-    assert "Raw status: approved_by_commander" in message.answers[-1][0]
+    assert "погоджено командиром" in message.answers[-1][0]
+    assert "approved_by_commander" not in message.answers[-1][0]
 
 
 @pytest.mark.asyncio
@@ -92,7 +93,8 @@ async def test_imported_admin_can_mark_applied(db_engine, monkeypatch) -> None:
 
     await handlers.cmd_mark_applied(message)
 
-    assert "Raw status: applied" in message.answers[-1][0]
+    assert "внесено в графік відпусток" in message.answers[-1][0]
+    assert "applied" not in message.answers[-1][0].lower()
 
 
 @pytest.mark.asyncio
@@ -109,7 +111,7 @@ async def test_inactive_personnel_cannot_create_request(db_engine, monkeypatch) 
 
     await handlers.cmd_request_leave(message)
 
-    assert "неактивен" in message.answers[-1][0]
+    assert "неактивний" in message.answers[-1][0]
     async with session_factory() as session, session.begin():
         request_count = len((await session.execute(select(LeaveRequest))).scalars().all())
     assert request_count == 0

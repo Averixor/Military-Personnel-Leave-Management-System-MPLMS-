@@ -1,4 +1,4 @@
-"""Presentation helpers for Telegram leave request flow."""
+"""Presentation helpers for Telegram leave request flow (Ukrainian UX)."""
 
 from __future__ import annotations
 
@@ -17,69 +17,130 @@ REQUEST_DURATION_DAYS = 15
 REQUEST_START_OFFSET_DAYS = 30
 MAX_OPTIONS_TO_SHOW = 3
 
+# Internal enum values that must never appear in user-facing Telegram text.
+FORBIDDEN_USER_TEXT_SNIPPETS: tuple[str, ...] = tuple(
+    status.value for status in RequestStatus
+) + (
+    "Raw status",
+    "request_id",
+    "<request_id>",
+    "/commander_approve",
+    "/mark_ready",
+    "/mark_applied",
+)
+
 
 def default_desired_start(*, today: date | None = None) -> date:
     base = today or date.today()
     return base + timedelta(days=REQUEST_START_OFFSET_DAYS)
 
 
+def format_date_ua(value: date) -> str:
+    return value.strftime("%d.%m.%Y")
+
+
 def format_option_line(index: int, option: ScheduleOption) -> str:
     return (
-        f"{index + 1}. {option.start_date} — {option.end_date} "
-        f"({option.duration_days} дн., score={option.conflict_score})"
+        f"{index + 1}. {format_date_ua(option.start_date)} — "
+        f"{format_date_ua(option.end_date)} ({option.duration_days} дн.)"
     )
 
 
 def format_options_message(request_id: str, options: tuple[ScheduleOption, ...]) -> str:
     shown = options[:MAX_OPTIONS_TO_SHOW]
     lines = [
-        f"Заявка #{request_id} создана.",
-        f"Желаемая дата начала: {default_desired_start()}",
-        f"Длительность: {REQUEST_DURATION_DAYS} дн.",
+        f"Заявка №{request_id} створена.",
+        f"Бажана дата початку: {format_date_ua(default_desired_start())}",
+        f"Тривалість: {REQUEST_DURATION_DAYS} дн.",
         "",
-        "Варианты (первые 3):",
+        "Варіанти відпустки:",
     ]
     lines.extend(format_option_line(index, option) for index, option in enumerate(shown))
-    lines.append("\nВыберите вариант кнопкой ниже.")
+    lines.append("\nОберіть варіант кнопкою нижче.")
     return "\n".join(lines)
-
-
-def format_selection_confirmation(option: ScheduleOption) -> str:
-    return (
-        "Вариант выбран.\n"
-        f"Статус: selected_by_user\n"
-        f"Даты: {option.start_date} — {option.end_date} ({option.duration_days} дн.)"
-    )
 
 
 def format_request_status(
     request: LeaveRequest,
     selected_leave_period: LeavePeriod | None = None,
 ) -> str:
-    raw_status = _status_value(request.status)
     lines = [
-        f"Заявка #{request.id}",
-        f"Raw status: {raw_status}",
+        f"Заявка №{request.id}",
         f"Статус: {request_status_label(request.status)}",
     ]
     if selected_leave_period is not None:
         lines.append(
-            "Даты: "
-            f"{selected_leave_period.starts_on} — {selected_leave_period.ends_on} "
-            f"({selected_leave_period.days_count} дн.)"
+            "Дати: "
+            f"{format_date_ua(selected_leave_period.starts_on)} — "
+            f"{format_date_ua(selected_leave_period.ends_on)}"
         )
-    lines.append(f"Далее: {_next_action_hint(request.status)}")
+    lines.append(f"Наступний крок: {_next_action_hint(request.status)}")
     return "\n".join(lines)
 
 
-def format_request_list_status(requests: tuple[LeaveRequest, ...]) -> str:
-    lines = ["Ваши последние заявки:"]
-    for request in requests:
-        lines.append(
-            f"#{request.id}: {request_status_label(request.status)}; "
-            f"желательно с {request.desired_start_date}, {request.desired_days_count} дн.; "
-            f"далее: {_next_action_hint(request.status)}"
+def format_request_summary_line(
+    request: LeaveRequest,
+    selected_leave_period: LeavePeriod | None = None,
+) -> str:
+    parts = [
+        f"№{request.id}",
+        request_status_label(request.status),
+    ]
+    if selected_leave_period is not None:
+        parts.append(
+            f"{format_date_ua(selected_leave_period.starts_on)} — "
+            f"{format_date_ua(selected_leave_period.ends_on)}"
         )
+    else:
+        parts.append(
+            f"бажано з {format_date_ua(request.desired_start_date)}, "
+            f"{request.desired_days_count} дн."
+        )
+    return " · ".join(parts)
+
+
+def format_request_list_status(requests: tuple[LeaveRequest, ...]) -> str:
+    if not requests:
+        return "У вас поки немає заявок."
+    lines = ["Ваші останні заявки:"]
+    for request in requests:
+        lines.append(format_request_summary_line(request))
+        lines.append(f"  Наступний крок: {_next_action_hint(request.status)}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def format_pending_commander_list(
+    items: tuple[tuple[LeaveRequest, LeavePeriod | None], ...],
+) -> str:
+    if not items:
+        return "Немає заявок, що очікують погодження командира."
+    lines = ["Заявки на погодження:"]
+    for request, leave_period in items:
+        lines.append("")
+        lines.append(format_request_status(request, leave_period))
+    return "\n".join(lines)
+
+
+def format_admin_actions_list(
+    approved: tuple[tuple[LeaveRequest, LeavePeriod | None], ...],
+    ready: tuple[tuple[LeaveRequest, LeavePeriod | None], ...],
+) -> str:
+    if not approved and not ready:
+        return "Немає заявок для адмін-дій."
+    lines = ["Адмін-дії — заявки після погодження командиром:"]
+    if approved:
+        lines.append("")
+        lines.append("Потрібно позначити готовими:")
+        for request, leave_period in approved:
+            lines.append("")
+            lines.append(format_request_status(request, leave_period))
+    if ready:
+        lines.append("")
+        lines.append("Готові до внесення в графік:")
+        for request, leave_period in ready:
+            lines.append("")
+            lines.append(format_request_status(request, leave_period))
     return "\n".join(lines)
 
 
@@ -90,34 +151,44 @@ def _status_value(status: object) -> str:
 def request_status_label(status: object) -> str:
     value = _status_value(status)
     labels = {
-        RequestStatus.DRAFT.value: "черновик",
-        RequestStatus.OPTIONS_GENERATED.value: "варианты подобраны",
-        RequestStatus.SELECTED_BY_USER.value: "вариант выбран",
-        RequestStatus.WAITING_AFFECTED_PEOPLE.value: "ожидает согласия затронутых людей",
-        RequestStatus.WAITING_ADMIN_REVIEW.value: "ожидает проверки администратора",
-        RequestStatus.WAITING_COMMANDER_APPROVAL.value: "ожидает согласования командира",
-        RequestStatus.APPROVED_BY_COMMANDER.value: "согласована командиром",
-        RequestStatus.READY_TO_APPLY.value: "готова к применению",
-        RequestStatus.APPLIED.value: "применена",
-        RequestStatus.REJECTED.value: "отклонена",
-        RequestStatus.EXPIRED.value: "истекла",
-        RequestStatus.CANCELLED.value: "отменена",
-        RequestStatus.MANUAL_ADMIN_REVIEW_REQUIRED.value: "нужна ручная проверка администратора",
+        RequestStatus.DRAFT.value: "чернетка",
+        RequestStatus.OPTIONS_GENERATED.value: "варіанти підібрано",
+        RequestStatus.SELECTED_BY_USER.value: "варіант відпустки обрано",
+        RequestStatus.WAITING_AFFECTED_PEOPLE.value: "очікує погодження зачеплених осіб",
+        RequestStatus.WAITING_ADMIN_REVIEW.value: "очікує перевірки адміністратора",
+        RequestStatus.WAITING_COMMANDER_APPROVAL.value: "очікує погодження командира",
+        RequestStatus.APPROVED_BY_COMMANDER.value: "погоджено командиром",
+        RequestStatus.READY_TO_APPLY.value: "готово до внесення в графік",
+        RequestStatus.APPLIED.value: "внесено в графік відпусток",
+        RequestStatus.REJECTED.value: "відхилено",
+        RequestStatus.EXPIRED.value: "термін минув",
+        RequestStatus.CANCELLED.value: "скасовано",
+        RequestStatus.MANUAL_ADMIN_REVIEW_REQUIRED.value: "потрібна ручна перевірка адміністратора",
     }
-    return labels.get(value, "неизвестный статус")
+    return labels.get(value, "невідомий статус")
 
 
 def _next_action_hint(status: object) -> str:
     value = _status_value(status)
     hints = {
-        RequestStatus.OPTIONS_GENERATED.value: "выберите вариант отпуска",
+        RequestStatus.OPTIONS_GENERATED.value: "оберіть варіант відпустки кнопкою нижче",
         RequestStatus.SELECTED_BY_USER.value: "натисніть «Подати на погодження»",
-        RequestStatus.WAITING_COMMANDER_APPROVAL.value: "ожидайте /commander_approve <request_id>",
-        RequestStatus.APPROVED_BY_COMMANDER.value: "администратор выполняет /mark_ready <request_id>",
-        RequestStatus.READY_TO_APPLY.value: "администратор выполняет /mark_applied <request_id>",
-        RequestStatus.APPLIED.value: "ничего не требуется, заявка применена",
-        RequestStatus.CANCELLED.value: "ничего не требуется, заявка отменена",
-        RequestStatus.REJECTED.value: "создайте новую заявку при необходимости",
-        RequestStatus.EXPIRED.value: "создайте новую заявку",
+        RequestStatus.WAITING_COMMANDER_APPROVAL.value: "очікуйте рішення командира",
+        RequestStatus.APPROVED_BY_COMMANDER.value: "очікуйте дії адміністратора",
+        RequestStatus.READY_TO_APPLY.value: "очікуйте внесення в графік адміністратором",
+        RequestStatus.APPLIED.value: "нічого не потрібно, заявка внесена в графік",
+        RequestStatus.CANCELLED.value: "нічого не потрібно, заявку скасовано",
+        RequestStatus.REJECTED.value: "за потреби створіть нову заявку",
+        RequestStatus.EXPIRED.value: "створіть нову заявку",
     }
-    return hints.get(value, "проверьте заявку или обратитесь к администратору")
+    return hints.get(value, "перевірте заявку або зверніться до адміністратора")
+
+
+def contains_forbidden_user_text(text: str) -> list[str]:
+    """Return forbidden snippets found in text (for tests)."""
+    lowered = text.lower()
+    found: list[str] = []
+    for snippet in FORBIDDEN_USER_TEXT_SNIPPETS:
+        if snippet.lower() in lowered:
+            found.append(snippet)
+    return found

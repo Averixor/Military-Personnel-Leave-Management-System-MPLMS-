@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from mplms.bot import handlers
 from mplms.bot.keyboards import approval_keyboard
+from mplms.bot.keyboards import BTN_SUBMIT_LEAVE
+from mplms.bot.keyboards import main_menu_keyboard
+from mplms.bot.leave_request_ui import contains_forbidden_user_text
+from mplms.bot.leave_request_ui import request_status_label
 from mplms.bot.session import LeaveRequestSession
 from mplms.bot.session import SUBMIT_APPROVAL_CALLBACK
 from mplms.bot.session import leave_request_sessions
@@ -60,6 +64,14 @@ def test_approval_keyboard_is_created() -> None:
     assert button.callback_data == SUBMIT_APPROVAL_CALLBACK
 
 
+def test_main_menu_has_ukrainian_buttons() -> None:
+    keyboard = main_menu_keyboard()
+    texts = {button.text for row in keyboard.keyboard for button in row}
+    assert BTN_SUBMIT_LEAVE in texts
+    assert "Мої заявки" in texts
+    assert "Допомога" in texts
+
+
 @pytest.mark.asyncio
 async def test_submit_approval_without_session_is_safe() -> None:
     leave_request_sessions.clear(91001)
@@ -67,12 +79,12 @@ async def test_submit_approval_without_session_is_safe() -> None:
 
     await handlers.on_submit_approval(callback)
 
-    assert callback.answers[-1] == ("Активная заявка не найдена.", True)
-    assert "Нет активной заявки" in callback.message.answers[-1][0]
+    assert callback.answers[-1] == ("Активну заявку не знайдено.", True)
+    assert "Немає активної заявки" in callback.message.answers[-1][0]
 
 
 @pytest.mark.asyncio
-async def test_my_request_shows_status(db_engine, monkeypatch) -> None:
+async def test_my_request_shows_ukrainian_status_without_raw(db_engine, monkeypatch) -> None:
     session_factory = async_sessionmaker(
         db_engine,
         expire_on_commit=False,
@@ -86,9 +98,11 @@ async def test_my_request_shows_status(db_engine, monkeypatch) -> None:
     await handlers.cmd_my_request(message)
 
     text = message.answers[-1][0]
-    assert f"Заявка #{request_id}" in text
-    assert "Raw status: selected_by_user" in text
-    assert "Даты: 2026-08-01" in text
+    assert f"Заявка №{request_id}" in text
+    assert request_status_label(RequestStatus.SELECTED_BY_USER) in text
+    assert "Наступний крок:" in text
+    assert "Дати: 01.08.2026" in text
+    assert contains_forbidden_user_text(text) == []
 
 
 @pytest.mark.asyncio
@@ -116,7 +130,9 @@ async def test_submit_approval_callback_moves_request_to_waiting(
 
     assert request is not None
     assert request.status == RequestStatus.WAITING_COMMANDER_APPROVAL
-    assert "waiting_commander_approval" in callback.message.answers[-1][0]
+    text = callback.message.answers[-1][0]
+    assert request_status_label(RequestStatus.WAITING_COMMANDER_APPROVAL) in text
+    assert contains_forbidden_user_text(text) == []
 
 
 def _factory_provider(session_factory):

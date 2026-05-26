@@ -9,6 +9,9 @@ from mplms.services.scheduler import ScheduleOption
 MAX_PICKABLE_OPTIONS = 3
 LEAVE_PICK_PREFIX = "leave_pick:"
 SUBMIT_APPROVAL_CALLBACK = "leave_submit_approval"
+COMMANDER_APPROVE_PREFIX = "cmd_approve:"
+ADMIN_MARK_READY_PREFIX = "admin_ready:"
+ADMIN_MARK_APPLIED_PREFIX = "admin_applied:"
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,19 @@ def parse_leave_pick_index(callback_data: str) -> int | None:
         return int(callback_data.removeprefix(LEAVE_PICK_PREFIX))
     except ValueError:
         return None
+
+
+def parse_request_id_callback(
+    callback_data: str,
+    *,
+    prefix: str,
+) -> str | None:
+    if not callback_data.startswith(prefix):
+        return None
+    request_id = callback_data.removeprefix(prefix).strip()
+    if not request_id.isdigit():
+        return None
+    return request_id
 
 
 def pick_option(

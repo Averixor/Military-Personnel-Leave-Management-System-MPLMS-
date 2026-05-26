@@ -44,21 +44,32 @@ uv run python -m mplms.bot.main
 Если `TELEGRAM_BOT_TOKEN` не задан, процесс завершится с сообщением:
 `TELEGRAM_BOT_TOKEN is not configured.` (без падения с непонятной ошибкой).
 
-Команды бота:
+Інтерфейс бота — **українською**, основні дії через кнопки (внутрішні статуси користувачу не показуються).
 
-- `/start`, `/help`
-- `/request_leave` — создать заявку, показать 3 варианта scheduler, выбрать inline-кнопкой, затем подать на погодження
-- `/my_request` — показать последний `request_id` из bot session, текущий статус и выбранные даты
-- `/my_requests` — показать последние заявки текущего Telegram-пользователя
-- `/cancel_request [request_id]` — отменить свою заявку до `applied`; без id берётся активная заявка из session
-- `/commander_approve <request_id>` — MVP-согласование командиром; нужна роль `commander`
-- `/mark_ready <request_id>` — перевести согласованную заявку в `ready_to_apply`; нужна роль `admin`
-- `/mark_applied <request_id>` — перевести готовую заявку в `applied`; нужна роль `admin`
-- `/demo_flow` — полный backend flow (как CLI `demo-flow`)
+Головне меню (reply-кнопки):
 
-Bot RBAC MVP intentionally stays simple: роль берётся из `personnel.role` по `telegram_id`.
-Новые Telegram-пользователи в dev SQLite создаются как `personnel`; demo commander/admin создаются
-отдельными dev helpers при необходимости и не обходят проверку ролей.
+- **Подати заявку на відпустку** — створити заявку, обрати один із 3 варіантів inline-кнопкою, потім «Подати на погодження»
+- **Мої заявки** — список ваших заявок зі зрозумілими статусами
+- **Допомога** — довідка
+
+Для командира:
+
+- **Заявки на погодження** (або `/commander_pending`) — список заявок з кнопкою «Погодити» під кожною
+
+Для адміністратора:
+
+- **Адмін-дії** (або `/admin_actions`) — заявки після погодження командиром; кнопки «Позначити готовою» / «Внести в графік»
+
+Резервні команди (fallback):
+
+- `/start`, `/help`, `/request_leave`, `/my_request`, `/my_requests`
+- `/cancel_request [номер]` — скасувати заявку до внесення в графік
+- `/commander_approve [номер]`, `/mark_ready [номер]`, `/mark_applied [номер]`
+- `/demo_flow` — технічний demo-flow (як CLI)
+
+Bot RBAC MVP навмисно простий: роль береться з `personnel.role` за `telegram_id`.
+Нові Telegram-користувачі в dev SQLite можуть автоматично створюватися як `personnel`;
+demo commander/admin створюються окремими dev helpers і не обходять перевірку ролей.
 
 ## Ручной прогон полного flow (CLI)
 
@@ -68,9 +79,8 @@ Bot RBAC MVP intentionally stays simple: роль берётся из `personnel
 uv run python -m mplms.cli demo-flow
 ```
 
-Команда создаёт `./data/mplms_dev.sqlite3` (если нет), поднимает таблицы, сидирует demo-персонал,
-прогоняет: create request → select option → submit → commander approve → ready_to_apply → applied,
-и печатает финальный статус и audit trail.
+Команда створює `./data/mplms_dev.sqlite3` (якщо немає), піднімає таблиці, додає demo-персонал,
+проганяє повний workflow заявки та друкує технічний audit trail.
 
 Для отдельного файла БД:
 

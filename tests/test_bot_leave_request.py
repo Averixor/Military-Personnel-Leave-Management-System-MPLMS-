@@ -30,9 +30,9 @@ def test_handlers_import() -> None:
 def test_leave_option_keyboard_has_three_buttons() -> None:
     keyboard = leave_option_keyboard(option_count=5)
     assert len(keyboard.inline_keyboard) == 3
-    assert keyboard.inline_keyboard[0][0].text == "Выбрать вариант 1"
-    assert keyboard.inline_keyboard[1][0].text == "Выбрать вариант 2"
-    assert keyboard.inline_keyboard[2][0].text == "Выбрать вариант 3"
+    assert keyboard.inline_keyboard[0][0].text == "Обрати варіант 1"
+    assert keyboard.inline_keyboard[1][0].text == "Обрати варіант 2"
+    assert keyboard.inline_keyboard[2][0].text == "Обрати варіант 3"
     assert keyboard.inline_keyboard[0][0].callback_data == "leave_pick:0"
     assert keyboard.inline_keyboard[2][0].callback_data == "leave_pick:2"
 

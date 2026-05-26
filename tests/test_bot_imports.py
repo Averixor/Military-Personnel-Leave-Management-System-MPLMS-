@@ -6,8 +6,9 @@ from mplms.bot import handlers
 from mplms.bot import keyboards
 from mplms.bot import main as bot_main
 from mplms.bot.handlers import format_demo_flow_result
-from mplms.bot.keyboards import BTN_DEMO_REQUEST
 from mplms.bot.keyboards import BTN_HELP
+from mplms.bot.keyboards import BTN_MY_REQUESTS
+from mplms.bot.keyboards import BTN_SUBMIT_LEAVE
 from mplms.bot.keyboards import main_menu_keyboard
 from mplms.cli import AuditEventSummary
 from mplms.cli import DemoFlowResult
@@ -27,7 +28,8 @@ def test_handlers_import() -> None:
 def test_keyboards_import() -> None:
     keyboard = main_menu_keyboard()
     texts = {button.text for row in keyboard.keyboard for button in row}
-    assert BTN_DEMO_REQUEST in texts
+    assert BTN_SUBMIT_LEAVE in texts
+    assert BTN_MY_REQUESTS in texts
     assert BTN_HELP in texts
 
 
@@ -46,8 +48,8 @@ def test_format_demo_flow_result() -> None:
         ),
     )
     text = format_demo_flow_result(result)
-    assert "applied" in text
-    assert "#1" in text
+    assert "внесено в графік відпусток" in text
+    assert "№1" in text
 
 
 def test_missing_token_prints_clear_message(capsys: pytest.CaptureFixture[str]) -> None:

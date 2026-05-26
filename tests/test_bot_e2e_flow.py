@@ -7,6 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from mplms.bot import handlers
+from mplms.bot.keyboards import BTN_ADMIN_ACTIONS
+from mplms.bot.keyboards import BTN_COMMANDER_PENDING
+from mplms.bot.leave_request_ui import contains_forbidden_user_text
+from mplms.bot.leave_request_ui import request_status_label
+from mplms.bot.session import ADMIN_MARK_APPLIED_PREFIX
+from mplms.bot.session import ADMIN_MARK_READY_PREFIX
+from mplms.bot.session import COMMANDER_APPROVE_PREFIX
 from mplms.bot.session import LEAVE_PICK_PREFIX
 from mplms.bot.session import SUBMIT_APPROVAL_CALLBACK
 from mplms.bot.session import leave_request_sessions
@@ -48,6 +55,10 @@ class FakeCallback:
         self.answers.append((text, show_alert))
 
 
+def _assert_user_facing(text: str) -> None:
+    assert contains_forbidden_user_text(text) == []
+
+
 @pytest.mark.asyncio
 async def test_full_bot_flow_reaches_applied_and_writes_audit(
     db_engine,
@@ -68,37 +79,75 @@ async def test_full_bot_flow_reaches_applied_and_writes_audit(
 
     pick = FakeCallback(telegram_user_id=USER_TELEGRAM_ID, data=f"{LEAVE_PICK_PREFIX}0")
     await handlers.on_leave_option_picked(pick)
-    assert "Raw status: selected_by_user" in pick.message.answers[-1][0]
+    pick_text = pick.message.answers[-1][0]
+    _assert_user_facing(pick_text)
+    assert request_status_label(RequestStatus.SELECTED_BY_USER) in pick_text
 
     submit = FakeCallback(telegram_user_id=USER_TELEGRAM_ID, data=SUBMIT_APPROVAL_CALLBACK)
     await handlers.on_submit_approval(submit)
-    assert "Raw status: waiting_commander_approval" in submit.message.answers[-1][0]
+    submit_text = submit.message.answers[-1][0]
+    _assert_user_facing(submit_text)
+    assert request_status_label(RequestStatus.WAITING_COMMANDER_APPROVAL) in submit_text
 
-    commander_message = FakeMessage(
+    commander_list = FakeMessage(
         telegram_user_id=COMMANDER_TELEGRAM_ID,
-        text=f"/commander_approve {request_id}",
+        text=BTN_COMMANDER_PENDING,
     )
-    await handlers.cmd_commander_approve(commander_message)
-    assert "Raw status: approved_by_commander" in commander_message.answers[-1][0]
+    await handlers.cmd_commander_pending(commander_list)
+    list_text = commander_list.answers[-1][0]
+    _assert_user_facing(list_text)
+    assert f"№{request_id}" in list_text
+    keyboard = commander_list.answers[-1][1]
+    assert keyboard is not None
+    assert keyboard.inline_keyboard[0][0].callback_data == f"{COMMANDER_APPROVE_PREFIX}{request_id}"
 
-    ready_message = FakeMessage(
-        telegram_user_id=ADMIN_TELEGRAM_ID,
-        text=f"/mark_ready {request_id}",
+    approve_cb = FakeCallback(
+        telegram_user_id=COMMANDER_TELEGRAM_ID,
+        data=f"{COMMANDER_APPROVE_PREFIX}{request_id}",
     )
-    await handlers.cmd_mark_ready(ready_message)
-    assert "Raw status: ready_to_apply" in ready_message.answers[-1][0]
+    await handlers.on_commander_approve_callback(approve_cb)
+    approve_text = approve_cb.message.answers[-1][0]
+    _assert_user_facing(approve_text)
+    assert request_status_label(RequestStatus.APPROVED_BY_COMMANDER) in approve_text
 
-    applied_message = FakeMessage(
+    admin_list = FakeMessage(telegram_user_id=ADMIN_TELEGRAM_ID, text=BTN_ADMIN_ACTIONS)
+    await handlers.cmd_admin_actions(admin_list)
+    admin_keyboard = admin_list.answers[-1][1]
+    assert admin_keyboard is not None
+    ready_button = admin_keyboard.inline_keyboard[0][0]
+    assert ready_button.callback_data == f"{ADMIN_MARK_READY_PREFIX}{request_id}"
+
+    ready_cb = FakeCallback(
         telegram_user_id=ADMIN_TELEGRAM_ID,
-        text=f"/mark_applied {request_id}",
+        data=f"{ADMIN_MARK_READY_PREFIX}{request_id}",
     )
-    await handlers.cmd_mark_applied(applied_message)
-    assert "Raw status: applied" in applied_message.answers[-1][0]
+    await handlers.on_admin_mark_ready_callback(ready_cb)
+    ready_text = ready_cb.message.answers[-1][0]
+    _assert_user_facing(ready_text)
+    assert request_status_label(RequestStatus.READY_TO_APPLY) in ready_text
+
+    admin_list_2 = FakeMessage(telegram_user_id=ADMIN_TELEGRAM_ID, text=BTN_ADMIN_ACTIONS)
+    await handlers.cmd_admin_actions(admin_list_2)
+    apply_keyboard = admin_list_2.answers[-1][1]
+    assert apply_keyboard is not None
+    apply_button = apply_keyboard.inline_keyboard[0][0]
+    assert apply_button.callback_data == f"{ADMIN_MARK_APPLIED_PREFIX}{request_id}"
+
+    applied_cb = FakeCallback(
+        telegram_user_id=ADMIN_TELEGRAM_ID,
+        data=f"{ADMIN_MARK_APPLIED_PREFIX}{request_id}",
+    )
+    await handlers.on_admin_mark_applied_callback(applied_cb)
+    applied_text = applied_cb.message.answers[-1][0]
+    _assert_user_facing(applied_text)
+    assert request_status_label(RequestStatus.APPLIED) in applied_text
 
     my_request = FakeMessage(telegram_user_id=USER_TELEGRAM_ID, text="/my_request")
     await handlers.cmd_my_request(my_request)
-    assert "Raw status: applied" in my_request.answers[-1][0]
-    assert "Даты:" in my_request.answers[-1][0]
+    my_text = my_request.answers[-1][0]
+    _assert_user_facing(my_text)
+    assert request_status_label(RequestStatus.APPLIED) in my_text
+    assert "Дати:" in my_text
 
     async with session_factory() as session, session.begin():
         request = await session.get(LeaveRequest, int(request_id))
@@ -139,7 +188,7 @@ async def test_personnel_cannot_commander_approve_in_e2e_style(
 
     await handlers.cmd_commander_approve(message)
 
-    assert "Недостаточно прав" in message.answers[-1][0]
+    assert "Ця дія доступна лише командиру." in message.answers[-1][0]
     async with session_factory() as session, session.begin():
         request = await session.get(LeaveRequest, int(request_id))
     assert request is not None
@@ -165,7 +214,7 @@ async def test_commander_cannot_mark_applied_in_e2e_style(
 
     await handlers.cmd_mark_applied(message)
 
-    assert "Недостаточно прав" in message.answers[-1][0]
+    assert "Ця дія доступна лише адміністратору." in message.answers[-1][0]
     async with session_factory() as session, session.begin():
         request = await session.get(LeaveRequest, int(request_id))
     assert request is not None
@@ -192,7 +241,8 @@ async def test_repeated_submit_is_handled_safely(db_engine, monkeypatch) -> None
 
     await handlers.on_submit_approval(repeated)
 
-    assert "уже не ожидает отправки" in repeated.message.answers[-1][0]
+    repeated_text = repeated.message.answers[-1][0].lower()
+    assert "вже не очікує" in repeated_text or "уже на погодженні" in repeated_text
     async with session_factory() as session, session.begin():
         request = await session.get(LeaveRequest, int(request_id))
     assert request is not None
@@ -220,7 +270,7 @@ async def test_cancel_applied_request_is_rejected_safely(db_engine, monkeypatch)
 
     await handlers.cmd_cancel_request(message)
 
-    assert "уже applied" in message.answers[-1][0]
+    assert "внесено в графік" in message.answers[-1][0]
     async with session_factory() as session, session.begin():
         request = await session.get(LeaveRequest, int(request_id))
     assert request is not None

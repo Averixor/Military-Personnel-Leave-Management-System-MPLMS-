@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from mplms.bot import handlers
 from mplms.bot.auth import require_role
+from mplms.bot.leave_request_ui import contains_forbidden_user_text
+from mplms.bot.leave_request_ui import request_status_label
 from mplms.domain.enums import LeaveStatus
 from mplms.domain.enums import LeaveType
 from mplms.domain.enums import RequestStatus
@@ -53,15 +55,25 @@ async def test_personnel_cannot_run_commander_or_admin_commands(
     )
     monkeypatch.setattr(handlers, "get_session_factory", _factory_provider(session_factory))
 
-    await handlers.cmd_commander_approve(
-        FakeMessage(telegram_user_id=101, text=f"/commander_approve {waiting_request_id}")
+    commander_msg = FakeMessage(
+        telegram_user_id=101,
+        text=f"/commander_approve {waiting_request_id}",
     )
-    await handlers.cmd_mark_ready(
-        FakeMessage(telegram_user_id=101, text=f"/mark_ready {approved_request_id}")
+    ready_msg = FakeMessage(
+        telegram_user_id=101,
+        text=f"/mark_ready {approved_request_id}",
     )
-    await handlers.cmd_mark_applied(
-        FakeMessage(telegram_user_id=101, text=f"/mark_applied {ready_request_id}")
+    applied_msg = FakeMessage(
+        telegram_user_id=101,
+        text=f"/mark_applied {ready_request_id}",
     )
+    await handlers.cmd_commander_approve(commander_msg)
+    await handlers.cmd_mark_ready(ready_msg)
+    await handlers.cmd_mark_applied(applied_msg)
+
+    assert "Ця дія доступна лише командиру." in commander_msg.answers[-1][0]
+    assert "Ця дія доступна лише адміністратору." in ready_msg.answers[-1][0]
+    assert "Ця дія доступна лише адміністратору." in applied_msg.answers[-1][0]
 
     async with session_factory() as session, session.begin():
         waiting = await session.get(LeaveRequest, int(waiting_request_id))
@@ -94,7 +106,9 @@ async def test_commander_can_approve_request(db_engine, monkeypatch) -> None:
 
     assert request is not None
     assert request.status == RequestStatus.APPROVED_BY_COMMANDER
-    assert "approved_by_commander" in message.answers[-1][0]
+    text = message.answers[-1][0]
+    assert request_status_label(RequestStatus.APPROVED_BY_COMMANDER) in text
+    assert contains_forbidden_user_text(text) == []
 
 
 @pytest.mark.asyncio
@@ -107,18 +121,18 @@ async def test_admin_can_mark_ready_and_applied(db_engine, monkeypatch) -> None:
     )
     monkeypatch.setattr(handlers, "get_session_factory", _factory_provider(session_factory))
 
-    await handlers.cmd_mark_ready(
-        FakeMessage(telegram_user_id=303, text=f"/mark_ready {request_id}")
-    )
-    await handlers.cmd_mark_applied(
-        FakeMessage(telegram_user_id=303, text=f"/mark_applied {request_id}")
-    )
+    ready_msg = FakeMessage(telegram_user_id=303, text=f"/mark_ready {request_id}")
+    await handlers.cmd_mark_ready(ready_msg)
+    applied_msg = FakeMessage(telegram_user_id=303, text=f"/mark_applied {request_id}")
+    await handlers.cmd_mark_applied(applied_msg)
 
     async with session_factory() as session, session.begin():
         request = await session.get(LeaveRequest, int(request_id))
 
     assert request is not None
     assert request.status == RequestStatus.APPLIED
+    for text, _ in ready_msg.answers + applied_msg.answers:
+        assert contains_forbidden_user_text(text) == []
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mplms.bot.database import ensure_personnel_in_session
+from mplms.domain.enums import UserRole
 from mplms.models.personnel import Personnel
 
 
@@ -12,11 +13,15 @@ class RoleRequiredError(PermissionError):
     def __init__(self, actual_role: str, allowed_roles: set[str]) -> None:
         self.actual_role = actual_role
         self.allowed_roles = allowed_roles
-        allowed = ", ".join(sorted(allowed_roles))
-        super().__init__(
-            f"Недостаточно прав для команды. Ваша роль: {actual_role}. "
-            f"Разрешены роли: {allowed}."
-        )
+        super().__init__(role_required_message(allowed_roles))
+
+
+def role_required_message(allowed_roles: set[str]) -> str:
+    if allowed_roles == {UserRole.COMMANDER.value}:
+        return "Ця дія доступна лише командиру."
+    if allowed_roles == {UserRole.ADMIN.value}:
+        return "Ця дія доступна лише адміністратору."
+    return "У вас немає прав для цієї дії."
 
 
 async def require_role(
