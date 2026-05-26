@@ -43,6 +43,14 @@
 - Nightly replan: 30-60 seconds timeout.
 - Supported scale: 1000+ personnel.
 
+## Leave Request Persistence (MVP)
+
+`create_persisted_leave_request` загружает `LeavePeriod` из БД, вызывает `create_leave_request_draft`,
+сохраняет `LeaveRequest` и возвращает DTO с `options` (без отдельного сохранения options в БД).
+
+`select_persisted_leave_option` создаёт `LeavePeriod` по выбранному `ScheduleOption`,
+связывает через `source_request_id` и переводит заявку в `selected_by_user`.
+
 ## Required Background Jobs
 
 - freeze_leaves_20_days;
