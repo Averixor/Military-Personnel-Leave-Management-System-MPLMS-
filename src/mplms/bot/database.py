@@ -21,6 +21,8 @@ from mplms.models.personnel import Unit
 from mplms.models.policy import PolicySnapshot
 
 BOT_UNIT_NAME = "Telegram Bot Unit"
+DEMO_ADMIN_NAME = "Telegram Demo Admin"
+DEMO_COMMANDER_NAME = "Telegram Demo Commander"
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -47,37 +49,102 @@ async def ensure_personnel_for_telegram(
     display_name: str | None,
 ) -> str:
     async with session_factory() as session, session.begin():
-        person = await session.scalar(
-            select(Personnel).where(Personnel.telegram_id == telegram_user_id)
+        person = await ensure_personnel_in_session(
+            session,
+            telegram_user_id=telegram_user_id,
+            display_name=display_name,
         )
+        return str(person.id)
+
+
+async def ensure_personnel_in_session(
+    session: AsyncSession,
+    telegram_user_id: int,
+    display_name: str | None,
+) -> Personnel:
+    person = await session.scalar(
+        select(Personnel).where(Personnel.telegram_id == telegram_user_id)
+    )
+    if person is not None:
+        return person
+
+    unit = await ensure_bot_unit_in_session(session)
+    await ensure_policy_in_session(session)
+
+    person = Personnel(
+        telegram_id=telegram_user_id,
+        full_name=display_name or f"Telegram user {telegram_user_id}",
+        role=UserRole.PERSONNEL,
+        unit_id=unit.id,
+    )
+    session.add(person)
+    await session.flush()
+    return person
+
+
+async def ensure_bot_unit_in_session(session: AsyncSession) -> Unit:
+    unit = await session.scalar(select(Unit).where(Unit.name == BOT_UNIT_NAME))
+    if unit is None:
+        unit = Unit(name=BOT_UNIT_NAME, normal_overlap_limit=2)
+        session.add(unit)
+        await session.flush()
+    return unit
+
+
+async def ensure_policy_in_session(session: AsyncSession) -> PolicySnapshot:
+    policy = await session.scalar(
+        select(PolicySnapshot).where(PolicySnapshot.is_active.is_(True)).limit(1)
+    )
+    if policy is None:
+        policy = PolicySnapshot(
+            legal_rules_version="bot-mvp-legal",
+            internal_policy_version="bot-mvp-internal",
+            legal_rules={},
+            internal_rules={},
+            effective_from=date(2026, 1, 1),
+            is_active=True,
+        )
+        session.add(policy)
+        await session.flush()
+    return policy
+
+
+async def ensure_demo_commander(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> str:
+    return await _ensure_demo_role(
+        session_factory,
+        full_name=DEMO_COMMANDER_NAME,
+        role=UserRole.COMMANDER,
+    )
+
+
+async def ensure_demo_admin(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> str:
+    return await _ensure_demo_role(
+        session_factory,
+        full_name=DEMO_ADMIN_NAME,
+        role=UserRole.ADMIN,
+    )
+
+
+async def _ensure_demo_role(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    full_name: str,
+    role: UserRole,
+) -> str:
+    async with session_factory() as session, session.begin():
+        person = await session.scalar(select(Personnel).where(Personnel.full_name == full_name))
         if person is not None:
             return str(person.id)
 
-        unit = await session.scalar(select(Unit).where(Unit.name == BOT_UNIT_NAME))
-        if unit is None:
-            unit = Unit(name=BOT_UNIT_NAME, normal_overlap_limit=2)
-            session.add(unit)
-            await session.flush()
-
-        policy = await session.scalar(
-            select(PolicySnapshot).where(PolicySnapshot.is_active.is_(True)).limit(1)
-        )
-        if policy is None:
-            policy = PolicySnapshot(
-                legal_rules_version="bot-mvp-legal",
-                internal_policy_version="bot-mvp-internal",
-                legal_rules={},
-                internal_rules={},
-                effective_from=date(2026, 1, 1),
-                is_active=True,
-            )
-            session.add(policy)
-            await session.flush()
-
+        unit = await ensure_bot_unit_in_session(session)
+        await ensure_policy_in_session(session)
         person = Personnel(
-            telegram_id=telegram_user_id,
-            full_name=display_name or f"Telegram user {telegram_user_id}",
-            role=UserRole.PERSONNEL,
+            full_name=full_name,
+            role=role,
             unit_id=unit.id,
         )
         session.add(person)

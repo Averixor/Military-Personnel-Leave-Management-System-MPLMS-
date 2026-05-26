@@ -7,8 +7,11 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery
 from aiogram.types import Message
+from sqlalchemy import desc
 from sqlalchemy import select
 
+from mplms.bot.auth import RoleRequiredError
+from mplms.bot.auth import require_role
 from mplms.bot.database import ensure_personnel_for_telegram
 from mplms.bot.database import get_session_factory
 from mplms.bot.keyboards import approval_keyboard
@@ -28,10 +31,10 @@ from mplms.bot.session import parse_leave_pick_index
 from mplms.bot.session import pick_option
 from mplms.cli import DemoFlowResult
 from mplms.cli import run_demo_flow
+from mplms.domain.enums import LeaveStatus
+from mplms.domain.enums import RequestStatus
 from mplms.domain.enums import UserRole
 from mplms.models.leave import LeavePeriod
-from mplms.models.personnel import Personnel
-from mplms.models.personnel import Unit
 from mplms.models.workflow import LeaveRequest
 from mplms.services.approval_persistence import approve_by_commander
 from mplms.services.approval_persistence import mark_applied
@@ -49,14 +52,14 @@ _HELP_TEXT = (
     "/help — эта справка\n"
     "/request_leave — создать заявку и выбрать вариант отпуска\n"
     "/my_request — показать активную заявку\n"
+    "/my_requests — список ваших заявок\n"
+    "/cancel_request [request_id] — отменить свою заявку до applied\n"
     "/commander_approve <request_id> — MVP approval командиром\n"
     "/mark_ready <request_id> — отметить готовой к применению\n"
     "/mark_applied <request_id> — применить заявку\n"
     "/demo_flow — прогнать demo-flow на SQLite (как CLI)\n\n"
     "Кнопки меню дублируют основные действия."
 )
-
-DEMO_COMMANDER_NAME = "Telegram Demo Commander"
 
 
 @router.message(Command("start"))
@@ -142,6 +145,9 @@ async def on_leave_option_picked(callback: CallbackQuery) -> None:
                 request_id=session.request_id,
                 option=option,
             )
+    except ValueError as exc:
+        await callback.message.answer(_friendly_pick_error(session.request_id, exc))
+        return
     except Exception as exc:
         await callback.message.answer(f"Не удалось выбрать вариант:\n{exc}")
         return
@@ -174,7 +180,9 @@ async def on_submit_approval(callback: CallbackQuery) -> None:
                 request_id=session.request_id,
             )
     except ValueError as exc:
-        await callback.message.answer(_friendly_workflow_error(session.request_id, exc))
+        await callback.message.answer(
+            await _friendly_submit_error(session.request_id, exc)
+        )
         return
     except Exception as exc:
         await callback.message.answer(f"Не удалось отправить заявку на погодження:\n{exc}")
@@ -182,13 +190,17 @@ async def on_submit_approval(callback: CallbackQuery) -> None:
 
     await callback.message.answer(
         f"Заявка #{updated.id} отправлена на погодження.\n"
-        f"Статус: {_status_value(updated.status)}",
+        f"Статус: {_status_label(updated.status)}",
         reply_markup=main_menu_keyboard(),
     )
 
 
 @router.message(Command("commander_approve"))
 async def cmd_commander_approve(message: Message) -> None:
+    if message.from_user is None:
+        await message.answer("Не удалось определить пользователя Telegram.")
+        return
+
     request_id = _request_id_arg(message.text or "")
     if request_id is None:
         await message.answer("Укажите request_id: /commander_approve <request_id>")
@@ -196,14 +208,21 @@ async def cmd_commander_approve(message: Message) -> None:
 
     try:
         session_factory = await get_session_factory()
-        commander_id = await _ensure_demo_commander(session_factory)
-        # TODO: replace demo commander with strict RBAC after auth roles are wired.
+        async with session_factory() as auth_session:
+            commander = await require_role(
+                auth_session,
+                message.from_user.id,
+                {UserRole.COMMANDER.value},
+            )
         async with session_factory() as session:
             updated = await approve_by_commander(
                 session,
                 request_id=request_id,
-                commander_id=commander_id,
+                commander_id=str(commander.id),
             )
+    except RoleRequiredError as exc:
+        await message.answer(str(exc))
+        return
     except ValueError as exc:
         await message.answer(_friendly_workflow_error(request_id, exc))
         return
@@ -213,12 +232,16 @@ async def cmd_commander_approve(message: Message) -> None:
 
     await message.answer(
         f"Заявка #{updated.id} согласована командиром.\n"
-        f"Статус: {_status_value(updated.status)}"
+        f"Статус: {_status_label(updated.status)}"
     )
 
 
 @router.message(Command("mark_ready"))
 async def cmd_mark_ready(message: Message) -> None:
+    if message.from_user is None:
+        await message.answer("Не удалось определить пользователя Telegram.")
+        return
+
     request_id = _request_id_arg(message.text or "")
     if request_id is None:
         await message.answer("Укажите request_id: /mark_ready <request_id>")
@@ -226,8 +249,17 @@ async def cmd_mark_ready(message: Message) -> None:
 
     try:
         session_factory = await get_session_factory()
+        async with session_factory() as auth_session:
+            await require_role(
+                auth_session,
+                message.from_user.id,
+                {UserRole.ADMIN.value},
+            )
         async with session_factory() as session:
             updated = await mark_ready_to_apply(session, request_id=request_id)
+    except RoleRequiredError as exc:
+        await message.answer(str(exc))
+        return
     except ValueError as exc:
         await message.answer(_friendly_workflow_error(request_id, exc))
         return
@@ -235,11 +267,15 @@ async def cmd_mark_ready(message: Message) -> None:
         await message.answer(f"Не удалось отметить заявку готовой:\n{exc}")
         return
 
-    await message.answer(f"Заявка #{updated.id}\nСтатус: {_status_value(updated.status)}")
+    await message.answer(f"Заявка #{updated.id}\nСтатус: {_status_label(updated.status)}")
 
 
 @router.message(Command("mark_applied"))
 async def cmd_mark_applied(message: Message) -> None:
+    if message.from_user is None:
+        await message.answer("Не удалось определить пользователя Telegram.")
+        return
+
     request_id = _request_id_arg(message.text or "")
     if request_id is None:
         await message.answer("Укажите request_id: /mark_applied <request_id>")
@@ -247,8 +283,17 @@ async def cmd_mark_applied(message: Message) -> None:
 
     try:
         session_factory = await get_session_factory()
+        async with session_factory() as auth_session:
+            await require_role(
+                auth_session,
+                message.from_user.id,
+                {UserRole.ADMIN.value},
+            )
         async with session_factory() as session:
             updated = await mark_applied(session, request_id=request_id)
+    except RoleRequiredError as exc:
+        await message.answer(str(exc))
+        return
     except ValueError as exc:
         await message.answer(_friendly_workflow_error(request_id, exc))
         return
@@ -256,7 +301,7 @@ async def cmd_mark_applied(message: Message) -> None:
         await message.answer(f"Не удалось применить заявку:\n{exc}")
         return
 
-    await message.answer(f"Заявка #{updated.id}\nСтатус: {_status_value(updated.status)}")
+    await message.answer(f"Заявка #{updated.id}\nСтатус: {_status_label(updated.status)}")
 
 
 @router.message(Command("my_request"))
@@ -291,6 +336,99 @@ async def cmd_my_request(message: Message) -> None:
         return
 
     await message.answer(_format_my_request(request, leave_period))
+
+
+@router.message(Command("my_requests"))
+async def cmd_my_requests(message: Message) -> None:
+    if message.from_user is None:
+        await message.answer("Не удалось определить пользователя Telegram.")
+        return
+
+    try:
+        session_factory = await get_session_factory()
+        personnel_id = await ensure_personnel_for_telegram(
+            session_factory,
+            message.from_user.id,
+            message.from_user.full_name,
+        )
+        async with session_factory() as db_session, db_session.begin():
+            result = await db_session.execute(
+                select(LeaveRequest)
+                .where(LeaveRequest.person_id == int(personnel_id))
+                .order_by(desc(LeaveRequest.id))
+                .limit(10)
+            )
+            requests = tuple(result.scalars())
+    except Exception as exc:
+        await message.answer(f"Не удалось получить список заявок:\n{exc}")
+        return
+
+    if not requests:
+        await message.answer("У вас пока нет заявок. Создайте первую через /request_leave.")
+        return
+
+    await message.answer(_format_request_list(requests))
+
+
+@router.message(Command("cancel_request"))
+async def cmd_cancel_request(message: Message) -> None:
+    if message.from_user is None:
+        await message.answer("Не удалось определить пользователя Telegram.")
+        return
+
+    session = leave_request_sessions.get(message.from_user.id)
+    request_id = _request_id_arg(message.text or "") or (
+        session.request_id if session is not None else None
+    )
+    if request_id is None:
+        await message.answer("Нет активной заявки. Укажите request_id: /cancel_request <request_id>")
+        return
+
+    try:
+        request_pk = int(request_id)
+    except ValueError:
+        await message.answer("Некорректный request_id. Используйте числовой id заявки.")
+        return
+
+    try:
+        session_factory = await get_session_factory()
+        personnel_id = await ensure_personnel_for_telegram(
+            session_factory,
+            message.from_user.id,
+            message.from_user.full_name,
+        )
+        async with session_factory() as db_session, db_session.begin():
+            request = await db_session.get(LeaveRequest, request_pk)
+            if request is None or request.person_id != int(personnel_id):
+                await message.answer(f"Заявка #{request_id} не найдена среди ваших заявок.")
+                return
+            if request.status == RequestStatus.APPLIED:
+                await message.answer("Заявка уже applied. Отменить её через MVP-бот нельзя.")
+                return
+            if request.status == RequestStatus.CANCELLED:
+                await message.answer(
+                    f"Заявка #{request_id} уже отменена.\n"
+                    f"Статус: {_status_label(request.status)}"
+                )
+                return
+
+            request.status = RequestStatus.CANCELLED
+            if request.selected_leave_period_id is not None:
+                leave_period = await db_session.get(
+                    LeavePeriod,
+                    request.selected_leave_period_id,
+                )
+                if leave_period is not None:
+                    leave_period.status = LeaveStatus.CANCELLED
+            await db_session.flush()
+    except Exception as exc:
+        await message.answer(f"Не удалось отменить заявку:\n{exc}")
+        return
+
+    await message.answer(
+        f"Заявка #{request_id} отменена.\n"
+        f"Статус: {_status_label(RequestStatus.CANCELLED)}"
+    )
 
 
 @router.message(Command("demo_flow"))
@@ -330,40 +468,26 @@ def _request_id_arg(text: str) -> str | None:
     return parts[1].strip()
 
 
-async def _ensure_demo_commander(session_factory) -> str:
-    async with session_factory() as session, session.begin():
-        commander = await session.scalar(
-            select(Personnel).where(Personnel.full_name == DEMO_COMMANDER_NAME)
-        )
-        if commander is not None:
-            return str(commander.id)
-
-        unit = await session.scalar(select(Unit).where(Unit.name == "Telegram Bot Unit"))
-        if unit is None:
-            unit = Unit(name="Telegram Bot Unit", normal_overlap_limit=2)
-            session.add(unit)
-            await session.flush()
-
-        commander = Personnel(
-            full_name=DEMO_COMMANDER_NAME,
-            role=UserRole.COMMANDER,
-            unit_id=unit.id,
-        )
-        session.add(commander)
-        await session.flush()
-        return str(commander.id)
-
-
 def _format_my_request(
     request: LeaveRequest,
     leave_period: LeavePeriod | None,
 ) -> str:
     lines = [
         f"Заявка #{request.id}",
-        f"Статус: {_status_value(request.status)}",
+        f"Статус: {_status_label(request.status)}",
     ]
     if leave_period is not None:
         lines.append(f"Даты: {leave_period.starts_on} — {leave_period.ends_on}")
+    return "\n".join(lines)
+
+
+def _format_request_list(requests: tuple[LeaveRequest, ...]) -> str:
+    lines = ["Ваши последние заявки:"]
+    for request in requests:
+        lines.append(
+            f"#{request.id}: {_status_label(request.status)}, "
+            f"желательно с {request.desired_start_date}, {request.desired_days_count} дн."
+        )
     return "\n".join(lines)
 
 
@@ -381,5 +505,62 @@ def _friendly_workflow_error(request_id: str, exc: ValueError) -> str:
     return f"Не удалось обработать заявку #{request_id}:\n{message}"
 
 
+def _friendly_pick_error(request_id: str, exc: ValueError) -> str:
+    message = str(exc)
+    if "must be in options_generated" in message:
+        return (
+            f"Выбор по заявке #{request_id} уже обработан или заявка перешла дальше.\n"
+            "Проверьте текущий статус через /my_request."
+        )
+    return _friendly_workflow_error(request_id, exc)
+
+
+async def _friendly_submit_error(request_id: str, exc: ValueError) -> str:
+    message = str(exc)
+    if "must be in selected_by_user" not in message:
+        return _friendly_workflow_error(request_id, exc)
+
+    status = await _load_request_status(request_id)
+    if status is None:
+        return f"Заявка #{request_id} не найдена."
+    return (
+        f"Заявка #{request_id} уже не ожидает отправки на погодження.\n"
+        f"Текущий статус: {_status_label(status)}"
+    )
+
+
+async def _load_request_status(request_id: str) -> RequestStatus | None:
+    try:
+        request_pk = int(request_id)
+    except ValueError:
+        return None
+    session_factory = await get_session_factory()
+    async with session_factory() as session, session.begin():
+        request = await session.get(LeaveRequest, request_pk)
+        if request is None:
+            return None
+        return request.status
+
+
 def _status_value(status: object) -> str:
     return str(getattr(status, "value", status))
+
+
+def _status_label(status: object) -> str:
+    value = _status_value(status)
+    labels = {
+        RequestStatus.DRAFT.value: "черновик",
+        RequestStatus.OPTIONS_GENERATED.value: "варианты подобраны",
+        RequestStatus.SELECTED_BY_USER.value: "вариант выбран",
+        RequestStatus.WAITING_AFFECTED_PEOPLE.value: "ожидает согласия затронутых людей",
+        RequestStatus.WAITING_ADMIN_REVIEW.value: "ожидает проверки администратора",
+        RequestStatus.WAITING_COMMANDER_APPROVAL.value: "ожидает согласования командира",
+        RequestStatus.APPROVED_BY_COMMANDER.value: "согласована командиром",
+        RequestStatus.READY_TO_APPLY.value: "готова к применению",
+        RequestStatus.APPLIED.value: "применена",
+        RequestStatus.REJECTED.value: "отклонена",
+        RequestStatus.EXPIRED.value: "истекла",
+        RequestStatus.CANCELLED.value: "отменена",
+        RequestStatus.MANUAL_ADMIN_REVIEW_REQUIRED.value: "нужна ручная проверка администратора",
+    }
+    return f"{value} — {labels.get(value, 'неизвестный статус')}"

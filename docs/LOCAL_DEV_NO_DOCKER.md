@@ -49,13 +49,16 @@ uv run python -m mplms.bot.main
 - `/start`, `/help`
 - `/request_leave` — создать заявку, показать 3 варианта scheduler, выбрать inline-кнопкой, затем подать на погодження
 - `/my_request` — показать последний `request_id` из bot session, текущий статус и выбранные даты
-- `/commander_approve <request_id>` — MVP-согласование командиром через demo commander
-- `/mark_ready <request_id>` — перевести согласованную заявку в `ready_to_apply`
-- `/mark_applied <request_id>` — перевести готовую заявку в `applied`
+- `/my_requests` — показать последние заявки текущего Telegram-пользователя
+- `/cancel_request [request_id]` — отменить свою заявку до `applied`; без id берётся активная заявка из session
+- `/commander_approve <request_id>` — MVP-согласование командиром; нужна роль `commander`
+- `/mark_ready <request_id>` — перевести согласованную заявку в `ready_to_apply`; нужна роль `admin`
+- `/mark_applied <request_id>` — перевести готовую заявку в `applied`; нужна роль `admin`
 - `/demo_flow` — полный backend flow (как CLI `demo-flow`)
 
-Approval MVP intentionally keeps RBAC soft: команда `/commander_approve` использует demo commander
-и создаёт его автоматически, если он ещё не существует.
+Bot RBAC MVP intentionally stays simple: роль берётся из `personnel.role` по `telegram_id`.
+Новые Telegram-пользователи в dev SQLite создаются как `personnel`; demo commander/admin создаются
+отдельными dev helpers при необходимости и не обходят проверку ролей.
 
 ## Ручной прогон полного flow (CLI)
 
