@@ -14,6 +14,8 @@ from mplms.bot.auth import RoleRequiredError
 from mplms.bot.auth import require_role
 from mplms.bot.database import ensure_personnel_for_telegram
 from mplms.bot.database import get_session_factory
+from mplms.bot.database import InactivePersonnelError
+from mplms.bot.database import TelegramPersonnelNotFoundError
 from mplms.bot.keyboards import approval_keyboard
 from mplms.bot.keyboards import BTN_DEMO_REQUEST
 from mplms.bot.keyboards import BTN_HELP
@@ -97,12 +99,15 @@ async def cmd_request_leave(message: Message) -> None:
         async with session_factory() as session:
             created = await create_persisted_leave_request(
                 session,
-                personnel_id=personnel_id,
+                personnel_id=str(personnel_id.id),
                 desired_start=default_desired_start(),
                 duration_days=REQUEST_DURATION_DAYS,
                 leave_type=LEAVE_TYPE_ANNUAL,
                 max_shift_days=14,
             )
+    except (InactivePersonnelError, TelegramPersonnelNotFoundError) as exc:
+        await message.answer(_friendly_personnel_error(exc))
+        return
     except Exception as exc:
         await message.answer(f"Не удалось создать заявку:\n{exc}")
         return
@@ -224,7 +229,7 @@ async def cmd_commander_approve(message: Message) -> None:
                 commander_id=str(commander.id),
             )
             selected_leave_period = await _load_selected_leave_period(session, updated)
-    except RoleRequiredError as exc:
+    except (RoleRequiredError, InactivePersonnelError, TelegramPersonnelNotFoundError) as exc:
         await message.answer(str(exc))
         return
     except ValueError as exc:
@@ -259,7 +264,7 @@ async def cmd_mark_ready(message: Message) -> None:
         async with session_factory() as session:
             updated = await mark_ready_to_apply(session, request_id=request_id)
             selected_leave_period = await _load_selected_leave_period(session, updated)
-    except RoleRequiredError as exc:
+    except (RoleRequiredError, InactivePersonnelError, TelegramPersonnelNotFoundError) as exc:
         await message.answer(str(exc))
         return
     except ValueError as exc:
@@ -294,7 +299,7 @@ async def cmd_mark_applied(message: Message) -> None:
         async with session_factory() as session:
             updated = await mark_applied(session, request_id=request_id)
             selected_leave_period = await _load_selected_leave_period(session, updated)
-    except RoleRequiredError as exc:
+    except (RoleRequiredError, InactivePersonnelError, TelegramPersonnelNotFoundError) as exc:
         await message.answer(str(exc))
         return
     except ValueError as exc:
@@ -357,11 +362,14 @@ async def cmd_my_requests(message: Message) -> None:
         async with session_factory() as db_session, db_session.begin():
             result = await db_session.execute(
                 select(LeaveRequest)
-                .where(LeaveRequest.person_id == int(personnel_id))
+                .where(LeaveRequest.person_id == personnel_id.id)
                 .order_by(desc(LeaveRequest.id))
                 .limit(10)
             )
             requests = tuple(result.scalars())
+    except (InactivePersonnelError, TelegramPersonnelNotFoundError) as exc:
+        await message.answer(_friendly_personnel_error(exc))
+        return
     except Exception as exc:
         await message.answer(f"Не удалось получить список заявок:\n{exc}")
         return
@@ -402,7 +410,7 @@ async def cmd_cancel_request(message: Message) -> None:
         )
         async with session_factory() as db_session, db_session.begin():
             request = await db_session.get(LeaveRequest, request_pk)
-            if request is None or request.person_id != int(personnel_id):
+            if request is None or request.person_id != personnel_id.id:
                 await message.answer(f"Заявка #{request_id} не найдена среди ваших заявок.")
                 return
             if request.status == RequestStatus.APPLIED:
@@ -429,6 +437,9 @@ async def cmd_cancel_request(message: Message) -> None:
                     leave_period.status = LeaveStatus.CANCELLED
                     selected_leave_period = leave_period
             await db_session.flush()
+    except (InactivePersonnelError, TelegramPersonnelNotFoundError) as exc:
+        await message.answer(_friendly_personnel_error(exc))
+        return
     except Exception as exc:
         await message.answer(f"Не удалось отменить заявку:\n{exc}")
         return
@@ -499,6 +510,20 @@ def _friendly_workflow_error(request_id: str, exc: ValueError) -> str:
     if "Invalid request_id" in message:
         return "Некорректный request_id. Используйте числовой id заявки."
     return f"Не удалось обработать заявку #{request_id}:\n{message}"
+
+
+def _friendly_personnel_error(exc: Exception) -> str:
+    if isinstance(exc, InactivePersonnelError):
+        return (
+            "Ваш профиль Personnel неактивен. "
+            "Заявки и команды утверждения недоступны."
+        )
+    if isinstance(exc, TelegramPersonnelNotFoundError):
+        return (
+            "Ваш Telegram не привязан к записи Personnel. "
+            "Попросите администратора импортировать personnel с вашим telegram_id."
+        )
+    return str(exc)
 
 
 def _friendly_pick_error(request_id: str, exc: ValueError) -> str:

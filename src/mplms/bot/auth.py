@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mplms.bot.database import ensure_personnel_in_session
@@ -32,16 +31,12 @@ async def require_role(
     """
 
     async with session.begin():
-        person = await session.scalar(
-            select(Personnel).where(Personnel.telegram_id == telegram_id)
+        person = await ensure_personnel_in_session(
+            session,
+            telegram_user_id=telegram_id,
+            display_name=None,
+            require_active=True,
         )
-        if person is None:
-            person = await ensure_personnel_in_session(
-                session,
-                telegram_user_id=telegram_id,
-                display_name=None,
-            )
-
         role = str(getattr(person.role, "value", person.role))
         if role not in allowed_roles:
             raise RoleRequiredError(role, allowed_roles)

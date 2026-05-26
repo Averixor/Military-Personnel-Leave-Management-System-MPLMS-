@@ -25,6 +25,7 @@ class AppSettings(BaseSettings):
     DEBUG: bool = False
 
     BOT_TOKEN: SecretStr | None = None
+    BOT_AUTO_CREATE_PERSONNEL: bool = True
 
     # Empty = dev SQLite default (see mplms.core.database.resolve_database_url).
     DATABASE_URL: str = ""

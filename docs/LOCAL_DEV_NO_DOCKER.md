@@ -94,10 +94,23 @@ personnel_code,full_name,rank,position,role,telegram_id,is_active
 
 ```powershell
 uv run python -m mplms.cli import-personnel examples/personnel_sample.csv
+uv run python -m mplms.bot.main
 ```
 
 Повторный импорт строки с тем же `personnel_code` обновляет существующую запись.
 Ошибки отдельных строк выводятся в summary и не останавливают весь импорт.
+После импорта бот сначала ищет пользователя по `telegram_id` в таблице `personnel` и берёт оттуда
+`role` и `is_active`. Так Telegram-пользователь из CSV сразу получает права `personnel`,
+`commander` или `admin`.
+
+Для dev/demo режима доступно автосоздание неизвестных Telegram-пользователей:
+
+```env
+BOT_AUTO_CREATE_PERSONNEL=true
+```
+
+По умолчанию оно включено. Если установить `BOT_AUTO_CREATE_PERSONNEL=false`, неизвестный
+`telegram_id` будет отклонён до импорта/привязки Personnel.
 
 ## Проверка сборки
 

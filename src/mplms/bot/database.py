@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import mplms.models  # noqa: F401
+from mplms.core.config import get_settings
 from mplms.core.database import ensure_sqlite_data_dir
 from mplms.core.database import engine_kwargs
 from mplms.core.database import resolve_database_url
@@ -26,6 +27,23 @@ DEMO_COMMANDER_NAME = "Telegram Demo Commander"
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+class TelegramPersonnelNotFoundError(LookupError):
+    def __init__(self, telegram_user_id: int) -> None:
+        self.telegram_user_id = telegram_user_id
+        super().__init__(
+            "Telegram user is not linked to Personnel. "
+            f"telegram_id={telegram_user_id}"
+        )
+
+
+class InactivePersonnelError(PermissionError):
+    def __init__(self, personnel: Personnel) -> None:
+        self.personnel = personnel
+        super().__init__(
+            f"Personnel #{personnel.id} is inactive and cannot use bot commands."
+        )
 
 
 async def get_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -47,26 +65,43 @@ async def ensure_personnel_for_telegram(
     session_factory: async_sessionmaker[AsyncSession],
     telegram_user_id: int,
     display_name: str | None,
-) -> str:
+    *,
+    auto_create: bool | None = None,
+    require_active: bool = True,
+) -> Personnel:
     async with session_factory() as session, session.begin():
         person = await ensure_personnel_in_session(
             session,
             telegram_user_id=telegram_user_id,
             display_name=display_name,
+            auto_create=auto_create,
+            require_active=require_active,
         )
-        return str(person.id)
+        await ensure_policy_in_session(session)
+        return person
 
 
 async def ensure_personnel_in_session(
     session: AsyncSession,
     telegram_user_id: int,
     display_name: str | None,
+    *,
+    auto_create: bool | None = None,
+    require_active: bool = True,
 ) -> Personnel:
     person = await session.scalar(
         select(Personnel).where(Personnel.telegram_id == telegram_user_id)
     )
     if person is not None:
+        if require_active and not person.is_active:
+            raise InactivePersonnelError(person)
         return person
+
+    should_auto_create = (
+        get_settings().BOT_AUTO_CREATE_PERSONNEL if auto_create is None else auto_create
+    )
+    if not should_auto_create:
+        raise TelegramPersonnelNotFoundError(telegram_user_id)
 
     unit = await ensure_bot_unit_in_session(session)
     await ensure_policy_in_session(session)
